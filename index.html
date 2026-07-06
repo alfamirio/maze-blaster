@@ -148,6 +148,244 @@ const SPAWNS = [
   { r:ROWS-2,  c:1,       dr:-1, dc:1  },
 ];
 
+// ====================== POWER-UP VISUALS (shared) ======================
+// Power-ups are drawn as icon-only (no background circle) so the shape
+// itself communicates the effect: a bomb for "+1 bomb" and a fire for
+// "+1 blast range".
+function drawPoly(g, pts, fillColor, strokeColor){
+  g.beginPath();
+  g.moveTo(pts[0].x, pts[0].y);
+  for (let i=1;i<pts.length;i++) g.lineTo(pts[i].x, pts[i].y);
+  g.closePath();
+  g.fillStyle(fillColor, 1);
+  g.fillPath();
+  if (strokeColor !== undefined){
+    g.lineStyle(Math.max(1.5, 0.7*UI_SCALE), strokeColor, 0.7);
+    g.strokePath();
+  }
+}
+function drawBombIcon(g){
+  const s = UI_SCALE * 1.7;
+  // thin white halo so the dark body still pops with no background circle
+  g.lineStyle(Math.max(2, 1.6*s), 0xffffff, 0.9);
+  g.strokeCircle(0, 2*s, 7*s);
+  // body
+  g.fillStyle(0x1c1c1c, 1);
+  g.fillCircle(0, 2*s, 7*s);
+  g.lineStyle(Math.max(1, 0.8*s), 0x000000, 1);
+  g.strokeCircle(0, 2*s, 7*s);
+  // highlight
+  g.fillStyle(0x4a4a4a, 1);
+  g.fillCircle(-2.2*s, -0.8*s, 2.2*s);
+  // fuse
+  g.lineStyle(Math.max(1.5, 1.6*s), 0x8b5a2b, 1);
+  g.beginPath();
+  g.moveTo(4*s, -4*s);
+  g.lineTo(7.5*s, -9.5*s);
+  g.strokePath();
+  // spark
+  g.fillStyle(0xffcc00, 1);
+  g.fillCircle(7.5*s, -10.5*s, 2.6*s);
+  g.fillStyle(0xfff3b0, 1);
+  g.fillCircle(7.5*s, -10.5*s, 1.2*s);
+}
+function drawFlameIcon(g){
+  const s = UI_SCALE * 1.9;
+  // two small flickering side tongues, drawn first so the main body overlaps them
+  const tongueL = [{x:-6.5,y:2*s},{x:-9.5,y:-2*s},{x:-8,y:-8*s},{x:-4.5,y:-4*s},{x:-5,y:1*s}];
+  drawPoly(g, tongueL, 0xff4500, 0x7a1f00);
+  const tongueR = [{x:6.5,y:1*s},{x:9.5,y:-3*s},{x:7.5,y:-9*s},{x:4,y:-4*s},{x:5,y:0}];
+  drawPoly(g, tongueR, 0xff4500, 0x7a1f00);
+  // main flame body (deep orange-red, outlined for visibility)
+  const outer = [
+    {x:0,y:-13*s},{x:5.5,y:-7*s},{x:7.5,y:0},{x:6,y:6*s},
+    {x:2.5,y:10*s},{x:0,y:12*s},{x:-2.5,y:10*s},{x:-6.5,y:5*s},
+    {x:-7.5,y:-1*s},{x:-4,y:-8*s}
+  ];
+  drawPoly(g, outer, 0xff4500, 0x7a1f00);
+  // middle layer (bright orange)
+  const mid = [
+    {x:0,y:-8*s},{x:4,y:-3*s},{x:5,y:2*s},{x:3,y:7*s},
+    {x:0,y:8.5*s},{x:-3,y:7*s},{x:-4.5,y:1*s},{x:-2.5,y:-4*s}
+  ];
+  drawPoly(g, mid, 0xffa500);
+  // inner core (hot yellow-white)
+  const core = [
+    {x:0,y:-3.5*s},{x:2.2*s,y:0},{x:2.6*s,y:3.5*s},{x:0,y:6*s},
+    {x:-2.6*s,y:3.5*s},{x:-2*s,y:0}
+  ];
+  drawPoly(g, core, 0xfff2a8);
+}
+// Builds the power-up visual (icon only, no background circle) as a
+// container, and makes it float (gentle vertical bob) so it stands out on
+// the floor.
+function createPowerupVisual(scene, x, y, type){
+  const icon = scene.add.graphics();
+  if (type === 'bomb') drawBombIcon(icon); else drawFlameIcon(icon);
+  // Shadow stays put on the tile while only the icon bobs above it — the
+  // growing/shrinking gap between the two is what actually reads as "floating".
+  const shadow = scene.add.ellipse(0, TILE*0.22, TILE*0.34, TILE*0.12, 0x000000, 0.32);
+  const container = scene.add.container(x, y, [shadow, icon]);
+  container.floatTween = scene.tweens.add({
+    targets: icon,
+    y: -6*UI_SCALE,
+    duration: 650 + Math.random()*150,
+    yoyo: true,
+    repeat: -1,
+    ease: 'Sine.easeInOut',
+  });
+  return container;
+}
+function destroyPowerupVisual(gfx){
+  if (gfx.floatTween) gfx.floatTween.stop();
+  gfx.destroy();
+}
+
+// ====================== BOMB VISUALS (shared) ======================
+// Bombs must read as clearly different from power-ups (no icon shape, just
+// a pulsing disc) and communicate urgency in a way that's actually legible:
+// a countdown number does the heavy lifting, and the pulse/flash underneath
+// starts slow enough to notice speeding up rather than being frantic from
+// the start.
+function lerpColorInt(c1, c2, t){
+  const r = Math.round(c1.r + (c2.r-c1.r)*t);
+  const g = Math.round(c1.g + (c2.g-c1.g)*t);
+  const b = Math.round(c1.b + (c2.b-c1.b)*t);
+  return (r<<16) | (g<<8) | b;
+}
+const BOMB_BASE_COLOR = { r:0x1c, g:0x1c, b:0x1c };
+const BOMB_HOT_COLOR  = { r:0x5a, g:0x10, b:0x10 };
+const BOMB_FLASH_COLOR= { r:0xff, g:0x40, b:0x40 };
+function createBombVisual(scene, x, y){
+  const circle = scene.add.circle(0, 0, TILE*0.3, 0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE), 0xff5555);
+  const text = scene.add.text(0, 1*UI_SCALE, '', {
+    fontFamily: 'system-ui, sans-serif',
+    fontSize: Math.round(17*UI_SCALE)+'px',
+    fontStyle: 'bold',
+    color: '#ffffff',
+    stroke: '#000000',
+    strokeThickness: Math.round(3.5*UI_SCALE),
+  }).setOrigin(0.5);
+  // Shadow lives outside the pulsing sub-container so it stays a calm,
+  // fixed ellipse on the ground while the bomb body scales/flashes above it.
+  const shadow = scene.add.ellipse(0, TILE*0.27, TILE*0.5, TILE*0.16, 0x000000, 0.35);
+  const pulse = scene.add.container(0, 0, [circle, text]);
+  const container = scene.add.container(x, y, [shadow, pulse]);
+  container.circleGfx = circle;
+  container.textGfx = text;
+  container.pulseGfx = pulse;
+  return container;
+}
+function updateBombVisual(container, placedAt, now){
+  const elapsed = now - placedAt;
+  const progress = Phaser.Math.Clamp(elapsed / BOMB_FUSE, 0, 1);
+  const remaining = Math.max(0, BOMB_FUSE - elapsed);
+  // blink frequency ramps from a calm ~0.8Hz (clearly one blink at a time)
+  // up to ~5Hz right before detonation, so the acceleration itself is easy
+  // to perceive instead of looking the same throughout
+  const freq = 0.8 + progress*progress*4.2;
+  const flash = (Math.sin((now/1000) * freq * Math.PI*2) + 1) / 2; // 0..1
+  // base color creeps from neutral black toward hot red as time runs out,
+  // then the flash flickers brighter red on top of that
+  const base = lerpColorInt(BOMB_BASE_COLOR, BOMB_HOT_COLOR, progress);
+  const baseC = { r:(base>>16)&255, g:(base>>8)&255, b:base&255 };
+  const color = lerpColorInt(baseC, BOMB_FLASH_COLOR, flash*(0.35+progress*0.55));
+  container.circleGfx.setFillStyle(color);
+  const scaleAmt = 1 + flash * (0.04 + progress*0.28);
+  container.pulseGfx.setScale(scaleAmt);
+  // countdown number: whole seconds remaining (fuse is BOMB_FUSE ms), so it
+  // ticks down in a way that matches what the player can actually count
+  const secondsLeft = Math.max(1, Math.ceil(remaining/1000));
+  const label = String(secondsLeft);
+  if (container.textGfx.text !== label) container.textGfx.setText(label);
+}
+
+// ====================== EXPLOSION FLAME VISUALS (shared) ======================
+// Classic-Bomberman style: one continuous cross/plus shape per bomb blast
+// (center + one rod per open direction) instead of separate blobs per cell,
+// built from layered fills that go red (outer, jagged) -> orange -> yellow
+// -> hot cream (innermost), with small flame-lick spikes along the rods and
+// at the tips, plus a fast opacity flicker for its short (FLAME_TIME) life.
+function drawJaggedPoly(g, pts, color){
+  g.fillStyle(color, 1);
+  g.beginPath();
+  g.moveTo(pts[0].x, pts[0].y);
+  for (let i=1;i<pts.length;i++) g.lineTo(pts[i].x, pts[i].y);
+  g.closePath();
+  g.fillPath();
+}
+function drawBurstStar(g, cx, cy, radius, spikes, color){
+  const points = [];
+  for (let i=0;i<spikes*2;i++){
+    const angle = (Math.PI*i)/spikes - Math.PI/2;
+    let r = (i % 2 === 0) ? radius : radius*0.55;
+    r *= 0.82 + Math.random()*0.36; // irregular, jagged edge rather than a perfect star
+    points.push({ x: cx+Math.cos(angle)*r, y: cy+Math.sin(angle)*r });
+  }
+  drawJaggedPoly(g, points, color);
+}
+// Small triangular flame licks along the long edges of one rod (arm), for
+// the jagged/irregular border look. `axis` is 'v' (up/down, edges run
+// left/right) or 'h' (left/right, edges run top/bottom).
+function addArmSpikes(g, axis, halfW, from, to, color){
+  if (to <= from) return;
+  const len = to - from;
+  const count = Math.max(1, Math.round(len / (TILE*0.3)));
+  for (let i=0;i<count;i++){
+    const t = (i+0.5)/count;
+    const pos = from + t*len + (Math.random()-0.5)*(len/count)*0.4;
+    const spikeLen = halfW*0.35 + Math.random()*halfW*0.3;
+    const half = halfW*0.55;
+    for (const side of [-1,1]){
+      let pts;
+      if (axis === 'v'){
+        const edgeX = side*halfW;
+        pts = [ {x:edgeX,y:pos-half}, {x:edgeX+side*spikeLen,y:pos}, {x:edgeX,y:pos+half} ];
+      } else {
+        const edgeY = side*halfW;
+        pts = [ {x:pos-half,y:edgeY}, {x:pos,y:edgeY+side*spikeLen}, {x:pos+half,y:edgeY} ];
+      }
+      drawJaggedPoly(g, pts, color);
+    }
+  }
+}
+// armLen = {up,down,left,right} in pixels (0 = that direction is blocked).
+function createExplosionCrossVisual(scene, x, y, armLen){
+  const W = TILE*0.6; // overall cross width
+  const g = scene.add.graphics();
+  const layers = [
+    { wf:1.00, color:0xdd2200 }, // outer red-orange, jagged border
+    { wf:0.80, color:0xff6a00 }, // orange band
+    { wf:0.54, color:0xffb300 }, // warm yellow-orange fill
+    { wf:0.26, color:0xffe27a }, // hot cream core
+  ];
+  layers.forEach(({wf,color}) => {
+    const w = W*wf, h = w/2;
+    g.fillStyle(color, 1);
+    g.fillRect(-h, -h, w, w); // center square
+    if (armLen.up)    g.fillRect(-h, -h-armLen.up,   w, armLen.up + h);
+    if (armLen.down)  g.fillRect(-h, h,               w, armLen.down + h);
+    if (armLen.left)  g.fillRect(-h-armLen.left, -h,  armLen.left + h, w);
+    if (armLen.right) g.fillRect(h, -h,               armLen.right + h, w);
+  });
+  const outerHalf = W/2;
+  addArmSpikes(g, 'v', outerHalf, -outerHalf-armLen.up, -outerHalf, 0xdd2200);
+  addArmSpikes(g, 'v', outerHalf, outerHalf, outerHalf+armLen.down, 0xdd2200);
+  addArmSpikes(g, 'h', outerHalf, -outerHalf-armLen.left, -outerHalf, 0xdd2200);
+  addArmSpikes(g, 'h', outerHalf, outerHalf, outerHalf+armLen.right, 0xdd2200);
+  if (armLen.up)    drawBurstStar(g, 0, -outerHalf-armLen.up,   outerHalf*0.9, 7, 0xdd2200);
+  if (armLen.down)  drawBurstStar(g, 0, outerHalf+armLen.down,  outerHalf*0.9, 7, 0xdd2200);
+  if (armLen.left)  drawBurstStar(g, -outerHalf-armLen.left, 0, outerHalf*0.9, 7, 0xdd2200);
+  if (armLen.right) drawBurstStar(g, outerHalf+armLen.right, 0, outerHalf*0.9, 7, 0xdd2200);
+  return scene.add.container(x, y, [g]);
+}
+function updateExplosionFlameVisual(container, createdAt, now){
+  const t = (now - createdAt) / 1000;
+  const freq = 13; // Hz -- fast flicker across the flame's short life
+  const flicker = 0.55 + 0.45 * ((Math.sin(t*freq*Math.PI*2) + 1) / 2);
+  container.setAlpha(flicker);
+}
+
 // ====================== TOUCH INPUT (shared) ======================
 const localTouch = { up:false, down:false, left:false, right:false };
 let localBombTapped = false;
@@ -194,12 +432,110 @@ function localBombJustPressed(keys){
 }
 
 // ====================== BOARD HELPERS (shared, deterministic) ======================
+// Tiny deterministic PRNG (per-tile seed) so grass speckles/stone seams are
+// stable across redraws instead of re-randomizing every time the board builds.
+function tileRand(seed){
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+// Grass floor tile: base color plus a scattering of subtle darker/lighter
+// speckles so it reads as mottled turf instead of a flat color swatch.
+function drawFloorTile(scene, r, c){
+  const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
+  const shade = (r+c) % 2 === 0 ? 0x2f6b2f : 0x276227;
+  scene.add.rectangle(x, y, TILE-2, TILE-2, shade);
+
+  const rand = tileRand(r*73856093 ^ c*19349663);
+  const speck = scene.add.graphics();
+  speck.x = x; speck.y = y;
+  const lightColor = (r+c) % 2 === 0 ? 0x3d7d3d : 0x347334;
+  const darkColor  = (r+c) % 2 === 0 ? 0x255525 : 0x1f4a1f;
+  const dotCount = 7 + Math.floor(rand()*5);
+  for (let i = 0; i < dotCount; i++){
+    const px = (rand()-0.5) * (TILE-10);
+    const py = (rand()-0.5) * (TILE-10);
+    const rad = (1.2 + rand()*1.6) * UI_SCALE;
+    speck.fillStyle(rand() < 0.5 ? lightColor : darkColor, 0.3);
+    speck.fillCircle(px, py, rad);
+  }
+}
+
+// Indestructible wall/pillar block: beveled "solid stone" look — light
+// top/left bevel faces, dark bottom/right bevel faces, a slightly recessed
+// inner face, and faint seam lines suggesting a carved stone block.
+function drawWallBlock(scene, r, c){
+  const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
+  const s = TILE - 2;
+  const half = s / 2;
+  const bevel = Math.max(4, Math.round(TILE * 0.1));
+  const baseColor  = 0x656b76;
+  const lightColor = 0x9aa1ac;
+  const darkColor  = 0x35383e;
+  const innerColor = 0x5a5f69;
+
+  const container = scene.add.container(x, y);
+
+  const body = scene.add.rectangle(0, 0, s, s, baseColor)
+    .setStrokeStyle(Math.round(2*UI_SCALE), 0x24262b);
+  container.add(body);
+
+  const bevelGfx = scene.add.graphics();
+  // top face (light)
+  bevelGfx.fillStyle(lightColor, 0.95);
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  // left face (light)
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.lineTo(-half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  // bottom face (dark)
+  bevelGfx.fillStyle(darkColor, 0.95);
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, half);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  // right face (dark)
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  container.add(bevelGfx);
+
+  const inner = scene.add.rectangle(0, 0, s - bevel*2, s - bevel*2, innerColor);
+  container.add(inner);
+
+  const seam = scene.add.graphics();
+  seam.lineStyle(Math.max(1, Math.round(1.5*UI_SCALE)), 0x484c54, 0.6);
+  seam.beginPath();
+  seam.moveTo(-half+bevel, 0); seam.lineTo(half-bevel, 0);
+  seam.moveTo(0, -half+bevel); seam.lineTo(0, half-bevel);
+  seam.strokePath();
+  container.add(seam);
+}
+
 function buildStaticBoard(scene){
   for (let r = 0; r < ROWS; r++){
     for (let c = 0; c < COLS; c++){
-      const x = c*TILE, y = HUD_H + r*TILE;
-      const shade = (r+c) % 2 === 0 ? 0x2f6b2f : 0x276227;
-      scene.add.rectangle(x + TILE/2, y + TILE/2, TILE-2, TILE-2, shade);
+      drawFloorTile(scene, r, c);
     }
   }
   const solid = [];
@@ -210,16 +546,124 @@ function buildStaticBoard(scene){
       const isPillar = r % 2 === 0 && c % 2 === 0;
       if (isBorder || isPillar){
         solid[r][c] = true;
-        const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
-        scene.add.rectangle(x, y, TILE-2, TILE-2, 0x555b66).setStrokeStyle(Math.round(2*UI_SCALE), 0x30343b);
+        drawWallBlock(scene, r, c);
       }
     }
   }
   return solid;
 }
+// A handful of crack layouts (as fractions of the crate's half-width), picked
+// deterministically per-tile so neighboring crates don't all look identical.
+// Each crack is a 3-point jagged line (start -> kink -> end).
+const CRACK_VARIANTS = [
+  [[-0.55,-0.6, -0.1,-0.05, 0.35,0.2], [0.5,-0.5, 0.05,0.15, -0.3,0.55]],
+  [[-0.3,-0.65, 0.05,-0.1, -0.35,0.4], [0.55,-0.2, 0.1,0.05, 0.4,0.6]],
+  [[-0.6,0.1, -0.1,0.0, 0.3,-0.45],   [0.15,0.6, -0.05,0.1, -0.55,-0.25]],
+  [[-0.15,-0.6, 0.1,-0.1, 0.55,0.15], [-0.5,0.5, -0.15,0.05, 0.2,-0.35]],
+];
 function drawBlock(scene, r, c){
   const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
-  return scene.add.rectangle(x, y, TILE-4, TILE-4, 0x8a5a2e).setStrokeStyle(Math.round(2*UI_SCALE), 0x5c3b1e);
+  const container = scene.add.container(x, y);
+
+  const s = TILE - 4;
+  const half = s / 2;
+  const bevel = Math.max(3, Math.round(TILE * 0.07)); // shallower than the stone walls' bevel
+
+  const body = scene.add.rectangle(0, 0, s, s, 0x8a5a2e).setStrokeStyle(Math.round(2*UI_SCALE), 0x5c3b1e);
+  container.add(body);
+
+  // Beveled crate faces (lighter top/left catching light, darker bottom/right
+  // in shadow) give the crate a raised, chunky look — but kept shallow and
+  // paired with the cracks below so it still reads as breakable wood, not a
+  // solid stone block.
+  const bevelGfx = scene.add.graphics();
+  bevelGfx.fillStyle(0xb07a3e, 0.9); // lit top/left faces
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.lineTo(-half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  bevelGfx.fillStyle(0x5c3b1e, 0.9); // shadowed bottom/right faces
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, half);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  container.add(bevelGfx);
+
+  // Recessed inner plank face, slightly different tone from the bevel edges
+  // so the crate reads as a raised block rather than a flat sticker.
+  const inner = scene.add.rectangle(0, 0, s - bevel*2, s - bevel*2, 0x8a5a2e);
+  container.add(inner);
+
+  // Crack lines make it obvious at a glance that this block can be broken
+  // (as opposed to the solid indestructible pillars/walls).
+  const variant = CRACK_VARIANTS[Math.abs(r*3 + c*7) % CRACK_VARIANTS.length];
+  const cracks = scene.add.graphics();
+  cracks.lineStyle(Math.max(1, Math.round(2*UI_SCALE)), 0x4a2f18, 0.9);
+  variant.forEach(pts => {
+    cracks.beginPath();
+    cracks.moveTo(pts[0]*half, pts[1]*half);
+    cracks.lineTo(pts[2]*half, pts[3]*half);
+    cracks.lineTo(pts[4]*half, pts[5]*half);
+    cracks.strokePath();
+  });
+  container.add(cracks);
+
+  // A chipped-off corner sells "damaged / breakable" even faster than the
+  // crack lines alone, especially at a glance or small size.
+  const chip = TILE*0.16;
+  const chipGfx = scene.add.graphics();
+  chipGfx.fillStyle(0x5c3b1e, 1);
+  chipGfx.beginPath();
+  chipGfx.moveTo(half - chip, -half);
+  chipGfx.lineTo(half, -half);
+  chipGfx.lineTo(half, -half + chip);
+  chipGfx.closePath();
+  chipGfx.fillPath();
+  container.add(chipGfx);
+
+  return container;
+}
+// Eyes are two small dots whose position within the face shifts toward
+// whatever direction the player is currently facing (last direction moved),
+// so at a glance you can tell where everyone's headed without any sprite
+// animation — just geometry.
+function positionPlayerEyes(p){
+  let dr = p.facingDr || 0, dc = p.facingDc || 0;
+  if (dr === 0 && dc === 0){ dr = 1; dc = 0; } // fallback: look "down" toward camera
+  const mag = Math.hypot(dc, dr) || 1;
+  const dx = dc/mag, dy = dr/mag; // forward direction in screen space
+  const forward = TILE*0.11;   // how far the eye pair shifts toward the facing side
+  const spacing = TILE*0.17;   // distance between the two eyes
+  const cx = dx*forward, cy = dy*forward;
+  const px = -dy*(spacing/2), py = dx*(spacing/2); // perpendicular to facing
+  p.eyeL.setPosition(cx + px, cy + py);
+  p.eyeR.setPosition(cx - px, cy - py);
+}
+function setPlayerFacing(p, dr, dc){
+  if (dr === 0 && dc === 0) return; // stayed put: keep last facing
+  if (p.facingDr === dr && p.facingDc === dc) return;
+  p.facingDr = dr; p.facingDc = dc;
+  positionPlayerEyes(p);
 }
 function makePlayers(scene, numPlayers){
   const players = [];
@@ -227,10 +671,18 @@ function makePlayers(scene, numPlayers){
     const s = SPAWNS[i];
     const x = s.c*TILE + TILE/2, y = HUD_H + s.r*TILE + TILE/2;
     const container = scene.add.container(x, y);
+    // Soft elliptical shadow, drawn first so it sits under everything else,
+    // to ground the flat circle players on the tile instead of floating.
+    const shadow = scene.add.ellipse(0, TILE*0.30, TILE*0.56, TILE*0.20, 0x000000, 0.35);
     const body = scene.add.circle(0, 0, TILE*0.32, PLAYER_COLORS[i]).setStrokeStyle(Math.round(3*UI_SCALE), 0x111111);
+    const eyeRad = Math.max(1.5, TILE*0.045);
+    const eyeL = scene.add.circle(0, 0, eyeRad, 0x161616);
+    const eyeR = scene.add.circle(0, 0, eyeRad, 0x161616);
     const label = scene.add.text(0, -TILE*0.55, 'P'+(i+1), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
-    container.add([body, label]);
-    players.push({ id:i, row:s.r, col:s.c, container, body, label, alive:true, maxBombs:1, blastRange:2 });
+    container.add([shadow, body, eyeL, eyeR, label]);
+    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, alive:true, maxBombs:1, blastRange:2, facingDr:s.dr, facingDc:s.dc };
+    positionPlayerEyes(player);
+    players.push(player);
   }
   return players;
 }
@@ -501,7 +953,8 @@ class HostScene extends Phaser.Scene {
     this.blocksGridBool = [];
     this.bombs = [];        // bomb object or null
     this.powerups = [];     // {type,gfx} or null
-    this.flames = [];       // {r,c,expire}
+    this.flames = [];       // {r,c,expire} -- logical, host-only (damage + bot AI)
+    this.explosionVisuals = []; // {gfx,createdAt,expire,row,col,arm} -- one per bomb blast
     const protectedCells = new Set();
     for (let i = 0; i < NET_NUM_PLAYERS; i++){
       const s = SPAWNS[i];
@@ -592,6 +1045,7 @@ class HostScene extends Phaser.Scene {
     const p = this.players[i];
     const nr = p.row + dr, nc = p.col + dc;
     if (this.isBlocked(nr, nc)) return;
+    setPlayerFacing(p, dr, dc);
     p.row = nr; p.col = nc; this.playerMoving[i] = true;
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'move', player:i, row:nr, col:nc });
     const x = nc*TILE + TILE/2, y = HUD_H + nr*TILE + TILE/2;
@@ -605,7 +1059,7 @@ class HostScene extends Phaser.Scene {
     const pu = this.powerups[p.row][p.col];
     if (!pu) return;
     if (pu.type === 'bomb') p.maxBombs++; else p.blastRange++;
-    pu.gfx.destroy();
+    destroyPowerupVisual(pu.gfx);
     this.powerups[p.row][p.col] = null;
   }
 
@@ -616,10 +1070,9 @@ class HostScene extends Phaser.Scene {
     if (active >= p.maxBombs) return;
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'bomb', player:p.id, row:p.row, col:p.col, range:p.blastRange });
     const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
-    const gfx = this.add.circle(x, y, TILE*0.3, 0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE), 0xff5555);
-    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange };
+    const gfx = createBombVisual(this, x, y);
+    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, placedAt:this.time.now };
     this.bombs[p.row][p.col] = bomb;
-    this.tweens.add({ targets: gfx, scale:{from:1,to:1.15}, yoyo:true, repeat:-1, duration:220 });
     this.time.delayedCall(BOMB_FUSE, () => this.explodeBomb(bomb));
   }
 
@@ -636,13 +1089,20 @@ class HostScene extends Phaser.Scene {
     bomb.gfx.destroy();
 
     const cells = [{ r: bomb.row, c: bomb.col }];
-    const dirs = [{dr:0,dc:-1},{dr:0,dc:1},{dr:-1,dc:0},{dr:1,dc:0}];
+    const dirs = [
+      { key:'left',  dr:0,  dc:-1 },
+      { key:'right', dr:0,  dc:1  },
+      { key:'up',    dr:-1, dc:0  },
+      { key:'down',  dr:1,  dc:0  },
+    ];
+    const armTiles = { up:0, down:0, left:0, right:0 };
     for (const d of dirs){
       for (let i = 1; i <= bomb.range; i++){
         const r = bomb.row + d.dr*i, c = bomb.col + d.dc*i;
         if (r < 0 || r >= ROWS || c < 0 || c >= COLS) break;
         if (this.solid[r][c]) break;
         cells.push({ r, c });
+        armTiles[d.key] = i;
         if (this.blocks[r][c]){
           this.blocks[r][c].destroy();
           this.blocks[r][c] = null;
@@ -650,8 +1110,7 @@ class HostScene extends Phaser.Scene {
           if (Math.random() < 0.35){
             const type = Math.random() < 0.5 ? 'bomb' : 'flame';
             const px = c*TILE+TILE/2, py = HUD_H+r*TILE+TILE/2;
-            const color = type==='bomb' ? 0x9b59b6 : 0xff8c00;
-            this.powerups[r][c] = { type, gfx: this.add.circle(px,py,12*UI_SCALE,color).setStrokeStyle(Math.round(2*UI_SCALE),0xffffff) };
+            this.powerups[r][c] = { type, gfx: createPowerupVisual(this, px, py, type) };
           }
           break;
         }
@@ -659,21 +1118,29 @@ class HostScene extends Phaser.Scene {
       }
     }
     const now = this.time.now;
-    for (const cell of cells){
-      const x = cell.c*TILE+TILE/2, y = HUD_H+cell.r*TILE+TILE/2;
-      const gfx = this.add.rectangle(x,y,TILE-6,TILE-6,0xffa500,0.85);
-      this.flames.push({ r:cell.r, c:cell.c, expire: now+FLAME_TIME });
-      this.time.delayedCall(FLAME_TIME, () => gfx.destroy());
-    }
+    for (const cell of cells) this.flames.push({ r:cell.r, c:cell.c, expire: now+FLAME_TIME });
+
+    const cx = bomb.col*TILE+TILE/2, cy = HUD_H+bomb.row*TILE+TILE/2;
+    const armLenPx = { up:armTiles.up*TILE, down:armTiles.down*TILE, left:armTiles.left*TILE, right:armTiles.right*TILE };
+    const gfx = createExplosionCrossVisual(this, cx, cy, armLenPx);
+    this.explosionVisuals.push({ gfx, createdAt: now, expire: now+FLAME_TIME, row:bomb.row, col:bomb.col, arm:armTiles });
   }
 
-  checkFlameDamage(){
-    if (!this.flames.length) return;
-    const now = this.time.now;
-    this.flames = this.flames.filter(f => f.expire > now);
-    for (const p of this.players){
-      if (!p.alive) continue;
-      if (this.flames.some(f => f.r === p.row && f.c === p.col)) this.killPlayer(p);
+  checkFlameDamage(time){
+    const now = time !== undefined ? time : this.time.now;
+    if (this.flames.length){
+      this.flames = this.flames.filter(f => f.expire > now);
+      for (const p of this.players){
+        if (!p.alive) continue;
+        if (this.flames.some(f => f.r === p.row && f.c === p.col)) this.killPlayer(p);
+      }
+    }
+    if (this.explosionVisuals.length){
+      this.explosionVisuals = this.explosionVisuals.filter(ev => {
+        if (ev.expire <= now){ ev.gfx.destroy(); return false; }
+        updateExplosionFlameVisual(ev.gfx, ev.createdAt, now);
+        return true;
+      });
     }
   }
 
@@ -681,6 +1148,7 @@ class HostScene extends Phaser.Scene {
     if (!p.alive) return;
     p.alive = false;
     p.body.setFillStyle(0x333333);
+    p.container.setAlpha(0.55);
     const tag = this.controllers[p.id] === 'bot' ? ' \u{1F916}' : '';
     p.label.setText('P'+(p.id+1)+tag+' X');
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'death', player:p.id });
@@ -736,7 +1204,7 @@ class HostScene extends Phaser.Scene {
     return {
       players: this.players.map(p => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange })),
       bombs: bombsList,
-      flames: this.flames.map(f => ({ row:f.r, col:f.c })),
+      explosions: this.explosionVisuals.map(ev => ({ row:ev.row, col:ev.col, up:ev.arm.up, down:ev.arm.down, left:ev.arm.left, right:ev.arm.right })),
       blocksGrid: this.blocksGridBool,
       powerups: powerupsList,
       over: this.gameOver ? { winner: (this.players.find(p=>p.alive) || {}).id } : null
@@ -745,7 +1213,11 @@ class HostScene extends Phaser.Scene {
 
   update(time){
     this.updateHUD();
-    this.checkFlameDamage();
+    this.checkFlameDamage(time);
+    for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++){
+      const bomb = this.bombs[r][c];
+      if (bomb) updateBombVisual(bomb.gfx, bomb.placedAt, time);
+    }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyR)){ this.scene.restart(); this.gameOver=false; return; }
 
@@ -803,7 +1275,8 @@ class ClientScene extends Phaser.Scene {
     this.hudTexts = hud.hudTexts; this.winText = hud.winText;
 
     this.bombGfxMap = {};
-    this.flameGfxList = [];
+    this.bombPlacedMap = {};
+    this.explosionVisualMap = {}; // key "row,col" (bomb origin) -> {gfx, createdAt}
     this.powerupGfxMap = {};
     this.gameOver = false;
 
@@ -818,9 +1291,12 @@ class ClientScene extends Phaser.Scene {
     data.players.forEach((pd, i) => {
       const p = this.players[i];
       if (!p) return;
+      const dr = pd.row - p.row, dc = pd.col - p.col;
+      if (dr !== 0 || dc !== 0) setPlayerFacing(p, Math.sign(dr), Math.sign(dc));
+      p.row = pd.row; p.col = pd.col;
       const x = pd.col*TILE + TILE/2, y = HUD_H + pd.row*TILE + TILE/2;
       this.tweens.add({ targets: p.container, x, y, duration: 90 });
-      if (!pd.alive && p.alive){ p.alive = false; p.body.setFillStyle(0x333333); p.label.setText('P'+(i+1)+' X'); }
+      if (!pd.alive && p.alive){ p.alive = false; p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText('P'+(i+1)+' X'); }
       p.maxBombs = pd.maxBombs; p.blastRange = pd.blastRange;
       this.hudTexts[i].setText('P'+(i+1)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange}` : 'OUT'));
       this.hudTexts[i].setColor(pd.alive ? '#eee' : '#666');
@@ -838,32 +1314,42 @@ class ClientScene extends Phaser.Scene {
 
     const bombKeys = new Set(data.bombs.map(b => b.row+','+b.col));
     for (const key in this.bombGfxMap){
-      if (!bombKeys.has(key)){ this.bombGfxMap[key].destroy(); delete this.bombGfxMap[key]; }
+      if (!bombKeys.has(key)){ this.bombGfxMap[key].destroy(); delete this.bombGfxMap[key]; delete this.bombPlacedMap[key]; }
     }
     data.bombs.forEach(b => {
       const key = b.row+','+b.col;
       if (!this.bombGfxMap[key]){
         const x = b.col*TILE+TILE/2, y = HUD_H+b.row*TILE+TILE/2;
-        this.bombGfxMap[key] = this.add.circle(x,y,TILE*0.3,0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE),0xff5555);
+        this.bombGfxMap[key] = createBombVisual(this, x, y);
+        // Client doesn't know the real placement time from the host, so it
+        // approximates "now" as the fuse start; this is off by at most one
+        // network round-trip, which isn't visually noticeable.
+        this.bombPlacedMap[key] = this.time.now;
       }
     });
 
-    this.flameGfxList.forEach(g => g.destroy());
-    this.flameGfxList = data.flames.map(f => {
-      const x = f.col*TILE+TILE/2, y = HUD_H+f.row*TILE+TILE/2;
-      return this.add.rectangle(x,y,TILE-6,TILE-6,0xffa500,0.85);
+    const explosionKeys = new Set(data.explosions.map(e => e.row+','+e.col));
+    for (const key in this.explosionVisualMap){
+      if (!explosionKeys.has(key)){ this.explosionVisualMap[key].gfx.destroy(); delete this.explosionVisualMap[key]; }
+    }
+    data.explosions.forEach(e => {
+      const key = e.row+','+e.col;
+      if (!this.explosionVisualMap[key]){
+        const x = e.col*TILE+TILE/2, y = HUD_H+e.row*TILE+TILE/2;
+        const armLenPx = { up:e.up*TILE, down:e.down*TILE, left:e.left*TILE, right:e.right*TILE };
+        this.explosionVisualMap[key] = { gfx: createExplosionCrossVisual(this, x, y, armLenPx), createdAt: this.time.now };
+      }
     });
 
     const puKeys = new Set(data.powerups.map(p => p.row+','+p.col));
     for (const key in this.powerupGfxMap){
-      if (!puKeys.has(key)){ this.powerupGfxMap[key].destroy(); delete this.powerupGfxMap[key]; }
+      if (!puKeys.has(key)){ destroyPowerupVisual(this.powerupGfxMap[key]); delete this.powerupGfxMap[key]; }
     }
     data.powerups.forEach(p => {
       const key = p.row+','+p.col;
       if (!this.powerupGfxMap[key]){
         const x = p.col*TILE+TILE/2, y = HUD_H+p.row*TILE+TILE/2;
-        const color = p.type==='bomb' ? 0x9b59b6 : 0xff8c00;
-        this.powerupGfxMap[key] = this.add.circle(x,y,12*UI_SCALE,color).setStrokeStyle(Math.round(2*UI_SCALE),0xffffff);
+        this.powerupGfxMap[key] = createPowerupVisual(this, x, y, p.type);
       }
     });
 
@@ -877,6 +1363,13 @@ class ClientScene extends Phaser.Scene {
   }
 
   update(time, delta){
+    for (const key in this.bombGfxMap){
+      updateBombVisual(this.bombGfxMap[key], this.bombPlacedMap[key], time);
+    }
+    for (const key in this.explosionVisualMap){
+      const ev = this.explosionVisualMap[key];
+      updateExplosionFlameVisual(ev.gfx, ev.createdAt, time);
+    }
     const dir = readLocalDirection(this.localKeys);
     const bombPressed = localBombJustPressed(this.localKeys);
     this.sendTimer += delta;
