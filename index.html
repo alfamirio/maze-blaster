@@ -7,7 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/4.2.0/phaser.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
-  html, body { margin:0; padding:0; background:#111; height:100%; font-family: system-ui, sans-serif; color:#eee; }
+  html, body { margin:0; padding:0; background:#111; height:100%; overflow:hidden; font-family: system-ui, sans-serif; color:#eee; }
   .hidden { display:none !important; }
 
   #lobby { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:20px; box-sizing:border-box; }
@@ -23,8 +23,10 @@
   #player-list { text-align:left; font-size:14px; margin:10px 0; color:#bbb; }
   #lobby-msg { font-size:13px; color:#e67e22; min-height:16px; margin-top:6px; }
 
-  #game { display:flex; justify-content:center; }
-  #hint { text-align:center; color:#aaa; font-size:12px; margin:8px 0; }
+  #game-wrap { display:flex; flex-direction:column; align-items:center; width:100vw; height:100vh; height:100dvh; box-sizing:border-box; }
+  #game { flex:1 1 auto; width:100%; min-height:0; overflow:hidden; position:relative; }
+  #game canvas { max-width:100%; max-height:100%; }
+  #hint { flex:0 0 auto; text-align:center; color:#aaa; font-size:12px; margin:8px 0; }
 
   #touch-controls { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:space-between; align-items:flex-end; padding:14px 18px; box-sizing:border-box; pointer-events:none; }
   #touch-controls button { pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none; border:none; border-radius:50%; background:rgba(255,255,255,0.14); color:#fff; font-size:20px; width:52px; height:52px; }
@@ -35,12 +37,15 @@
   #btn-left { top:59px; left:0; }
   #btn-right { top:59px; right:0; }
   #btn-bomb { width:70px; height:70px; background:rgba(231,76,60,0.5); font-size:14px; }
+
+  #btn-export { position:fixed; top:10px; right:10px; z-index:20; padding:9px 14px; border:none; border-radius:8px; background:#2ecc71; color:#0b1f13; font-size:13px; font-weight:600; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.4); }
+  #btn-export:active { background:#27ae60; }
 </style>
 </head>
 <body>
 
 <div id="lobby">
-  <h1>💣 Maze Blaster Online</h1>
+  <h1>Maze Blaster Online</h1>
 
   <div id="lobby-choice">
     <button id="btn-solo">Play Solo (no network)</button>
@@ -69,8 +74,11 @@
   </div>
 </div>
 
-<div id="game" class="hidden"></div>
-<div id="hint" class="hidden">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Host presses R to restart</div>
+<div id="game-wrap" class="hidden">
+  <div id="game"></div>
+  <div id="hint">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Host presses R to restart</div>
+</div>
+<button id="btn-export" class="hidden">⬇ Export moves (JSON)</button>
 
 <div id="touch-controls" class="hidden">
   <div id="dpad">
@@ -107,10 +115,20 @@
 */
 
 // ====================== SHARED CONFIG ======================
-const TILE = 48;
+// Board is rendered at native resolution now (not stretched up from a small
+// buffer via Phaser's `resolution` config). TILE/HUD_H are scaled up from
+// their original values (48/78) by ~1.78x, the same multiplier that maps
+// this board's aspect ratio onto a 1080px-tall canvas — so ROWS*TILE+HUD_H
+// comes out to ~1080, a native "1080p-class" render instead of 720x606
+// stretched via CSS/resolution.
+const TILE = 86;
 const COLS = 15;
 const ROWS = 11;
-const HUD_H = 56;
+const HUD_H = 139;
+// A handful of UI elements (fonts, dot radii, stroke widths, offsets) are
+// specified in fixed pixels rather than as a fraction of TILE. UI_SCALE
+// keeps those visually proportional at the new, larger TILE size.
+const UI_SCALE = TILE / 48;
 const MOVE_INTERVAL = 150;
 const BOMB_FUSE = 2000;
 const FLAME_TIME = 350;
@@ -187,7 +205,7 @@ function buildStaticBoard(scene){
       if (isBorder || isPillar){
         solid[r][c] = true;
         const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
-        scene.add.rectangle(x, y, TILE-2, TILE-2, 0x555b66).setStrokeStyle(2, 0x30343b);
+        scene.add.rectangle(x, y, TILE-2, TILE-2, 0x555b66).setStrokeStyle(Math.round(2*UI_SCALE), 0x30343b);
       }
     }
   }
@@ -195,7 +213,7 @@ function buildStaticBoard(scene){
 }
 function drawBlock(scene, r, c){
   const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
-  return scene.add.rectangle(x, y, TILE-4, TILE-4, 0x8a5a2e).setStrokeStyle(2, 0x5c3b1e);
+  return scene.add.rectangle(x, y, TILE-4, TILE-4, 0x8a5a2e).setStrokeStyle(Math.round(2*UI_SCALE), 0x5c3b1e);
 }
 function makePlayers(scene, numPlayers){
   const players = [];
@@ -203,8 +221,8 @@ function makePlayers(scene, numPlayers){
     const s = SPAWNS[i];
     const x = s.c*TILE + TILE/2, y = HUD_H + s.r*TILE + TILE/2;
     const container = scene.add.container(x, y);
-    const body = scene.add.circle(0, 0, TILE*0.32, PLAYER_COLORS[i]).setStrokeStyle(3, 0x111111);
-    const label = scene.add.text(0, -TILE*0.55, 'P'+(i+1), { fontSize:'12px', color:'#fff' }).setOrigin(0.5);
+    const body = scene.add.circle(0, 0, TILE*0.32, PLAYER_COLORS[i]).setStrokeStyle(Math.round(3*UI_SCALE), 0x111111);
+    const label = scene.add.text(0, -TILE*0.55, 'P'+(i+1), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
     container.add([body, label]);
     players.push({ id:i, row:s.r, col:s.c, container, body, label, alive:true, maxBombs:1, blastRange:2 });
   }
@@ -213,12 +231,15 @@ function makePlayers(scene, numPlayers){
 function buildHUD(scene, numPlayers){
   scene.add.rectangle(COLS*TILE/2, HUD_H/2, COLS*TILE, HUD_H, 0x15181d);
   const hudTexts = [];
+  const statsY = 20 * UI_SCALE; // top row: per-player stats
+  const slotW = (COLS*TILE) / numPlayers; // even spacing regardless of player count
   for (let i = 0; i < numPlayers; i++){
-    const x = 20 + i*170;
-    scene.add.circle(x, HUD_H/2, 10, PLAYER_COLORS[i]);
-    hudTexts.push(scene.add.text(x+18, HUD_H/2-9, '', { fontSize:'13px', color:'#eee' }));
+    const x = (12*UI_SCALE) + i*slotW;
+    scene.add.circle(x, statsY, 9*UI_SCALE, PLAYER_COLORS[i]);
+    hudTexts.push(scene.add.text(x+15*UI_SCALE, statsY-8*UI_SCALE, '', { fontSize:Math.round(12*UI_SCALE)+'px', color:'#eee' }));
   }
-  const winText = scene.add.text(COLS*TILE/2, HUD_H/2, '', { fontSize:'20px', color:'#fff', fontStyle:'bold' }).setOrigin(0.5);
+  const winY = HUD_H - 18*UI_SCALE; // bottom row: win/status message, kept clear of player stats above
+  const winText = scene.add.text(COLS*TILE/2, winY, '', { fontSize:Math.round(18*UI_SCALE)+'px', color:'#fff', fontStyle:'bold' }).setOrigin(0.5);
   return { hudTexts, winText };
 }
 
@@ -235,6 +256,8 @@ function botCellOpen(scene, r, c){
   if (scene.solid[r][c]) return false;
   if (scene.blocks[r][c]) return false;
   if (scene.bombs[r][c]) return false;
+  // Añade esta línea para evitar caminar sobre llamas activas:
+  if (scene.flames.some(f => f.r === r && f.c === c)) return false;
   return true;
 }
 
@@ -331,10 +354,9 @@ function botDecide(scene, i, time){
   mem.nextThink = time + (urgent ? 80 + Math.random()*60 : 220 + Math.random()*140);
 
   if (inDanger){
-    // In danger: prefer stepping directly onto a safe neighbor; only fall back
-    // to a longer BFS path if every adjacent cell is also currently unsafe.
+    // Elimina 'danger' como argumento final en botFirstStepTo para que pueda cruzar la zona de explosión inminente
     const step = botRandomSafeStep(scene, p, danger)
-      || botFirstStepTo(scene, p.row, p.col, (r,c) => !danger.has(r+','+c), danger);
+      || botFirstStepTo(scene, p.row, p.col, (r,c) => !danger.has(r+','+c));
     if (step) dir[step] = true;
   } else if (mem.waitingForClear){
     // We already have a bomb armed (or its fire hasn't finished yet) and
@@ -457,6 +479,11 @@ const net = new NetManager();
 let NET_NUM_PLAYERS = 1;
 let NET_BOT_COUNT = 0; // solo mode only: players 1..NET_BOT_COUNT are AI-controlled
 let NET_BLOCKS_GRID = null;
+let NET_IS_SOLO = false;    // true only for "Play Solo" runs — enables move recording/export
+let activeHostScene = null; // reference to the live HostScene instance, for the export button
+let currentGame = null; // reference to the live Phaser.Game instance, so we can force a re-fit on resize/rotate
+window.addEventListener('resize', () => { if (currentGame) currentGame.scale.refresh(); });
+window.addEventListener('orientationchange', () => { if (currentGame) setTimeout(() => currentGame.scale.refresh(), 100); });
 
 // ====================== HOST SCENE (authoritative) ======================
 class HostScene extends Phaser.Scene {
@@ -510,6 +537,24 @@ class HostScene extends Phaser.Scene {
       if (this.controllers[i] === 'bot') p.label.setText('P'+(i+1)+' \u{1F916}');
     });
 
+    activeHostScene = this;
+    this.recording = null;
+    if (NET_IS_SOLO){
+      this.recording = {
+        startedAt: Date.now(),
+        cols: COLS, rows: ROWS, tile: TILE, hudHeight: HUD_H,
+        numPlayers: NET_NUM_PLAYERS,
+        botCount: NET_BOT_COUNT,
+        controllers: this.controllers.slice(), // 'local' | 'bot' per player index
+        spawns: SPAWNS.slice(0, NET_NUM_PLAYERS),
+        // events: one entry per discrete game event, in chronological order.
+        //   move  -> { t, type:'move',  player, row, col }
+        //   bomb  -> { t, type:'bomb',  player, row, col, range }
+        //   death -> { t, type:'death', player }
+        events: []
+      };
+    }
+
     this.remoteInput = {};      // idx -> {up,down,left,right}
     this.remoteBombQueue = {};  // idx -> pending count
     net.onInput = (idx, data) => {
@@ -542,6 +587,7 @@ class HostScene extends Phaser.Scene {
     const nr = p.row + dr, nc = p.col + dc;
     if (this.isBlocked(nr, nc)) return;
     p.row = nr; p.col = nc; this.playerMoving[i] = true;
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'move', player:i, row:nr, col:nc });
     const x = nc*TILE + TILE/2, y = HUD_H + nr*TILE + TILE/2;
     this.tweens.add({
       targets: p.container, x, y, duration: MOVE_INTERVAL - 10,
@@ -562,8 +608,9 @@ class HostScene extends Phaser.Scene {
     if (this.bombs[p.row][p.col]) return;
     const active = this.countActiveBombs(p);
     if (active >= p.maxBombs) return;
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'bomb', player:p.id, row:p.row, col:p.col, range:p.blastRange });
     const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
-    const gfx = this.add.circle(x, y, TILE*0.3, 0x1c1c1c).setStrokeStyle(2, 0xff5555);
+    const gfx = this.add.circle(x, y, TILE*0.3, 0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE), 0xff5555);
     const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange };
     this.bombs[p.row][p.col] = bomb;
     this.tweens.add({ targets: gfx, scale:{from:1,to:1.15}, yoyo:true, repeat:-1, duration:220 });
@@ -598,7 +645,7 @@ class HostScene extends Phaser.Scene {
             const type = Math.random() < 0.5 ? 'bomb' : 'flame';
             const px = c*TILE+TILE/2, py = HUD_H+r*TILE+TILE/2;
             const color = type==='bomb' ? 0x9b59b6 : 0xff8c00;
-            this.powerups[r][c] = { type, gfx: this.add.circle(px,py,12,color).setStrokeStyle(2,0xffffff) };
+            this.powerups[r][c] = { type, gfx: this.add.circle(px,py,12*UI_SCALE,color).setStrokeStyle(Math.round(2*UI_SCALE),0xffffff) };
           }
           break;
         }
@@ -630,6 +677,7 @@ class HostScene extends Phaser.Scene {
     p.body.setFillStyle(0x333333);
     const tag = this.controllers[p.id] === 'bot' ? ' \u{1F916}' : '';
     p.label.setText('P'+(p.id+1)+tag+' X');
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'death', player:p.id });
     this.aliveCount--;
     const threshold = NET_NUM_PLAYERS > 1 ? 1 : 0;
     if (this.aliveCount <= threshold) this.endGame();
@@ -638,6 +686,10 @@ class HostScene extends Phaser.Scene {
   endGame(){
     if (this.gameOver) return;
     this.gameOver = true;
+    if (this.recording){
+      const winner = this.players.find(p => p.alive);
+      this.recording.events.push({ t: Math.round(this.time.now), type:'gameOver', winner: winner ? winner.id : null });
+    }
     if (NET_NUM_PLAYERS === 1){
       this.winText.setText('You died! (R to retry)');
       return;
@@ -646,11 +698,26 @@ class HostScene extends Phaser.Scene {
     this.winText.setText(winner ? `Player ${winner.id+1} wins! (R to restart)` : `Draw! (R to restart)`);
   }
 
+  // Bundles the recorded events into a downloadable JSON file.
+  exportRecording(){
+    if (!this.recording) return;
+    const payload = Object.assign({}, this.recording, { exportedAt: Date.now() });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `maze-blaster-moves-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   updateHUD(){
     for (let i = 0; i < NET_NUM_PLAYERS; i++){
       const p = this.players[i];
-      const tag = this.controllers[i] === 'bot' ? ' \u{1F916}' : '';
-      this.hudTexts[i].setText('P'+(i+1)+tag+': '+(p.alive ? `bombs ${p.maxBombs} / range ${p.blastRange}` : 'OUT'));
+      const tag = this.controllers[i] === 'bot' ? '\u{1F916}' : '';
+      this.hudTexts[i].setText(`P${i+1}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}` : 'OUT'));
       this.hudTexts[i].setColor(p.alive ? '#eee' : '#666');
     }
   }
@@ -771,7 +838,7 @@ class ClientScene extends Phaser.Scene {
       const key = b.row+','+b.col;
       if (!this.bombGfxMap[key]){
         const x = b.col*TILE+TILE/2, y = HUD_H+b.row*TILE+TILE/2;
-        this.bombGfxMap[key] = this.add.circle(x,y,TILE*0.3,0x1c1c1c).setStrokeStyle(2,0xff5555);
+        this.bombGfxMap[key] = this.add.circle(x,y,TILE*0.3,0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE),0xff5555);
       }
     });
 
@@ -790,7 +857,7 @@ class ClientScene extends Phaser.Scene {
       if (!this.powerupGfxMap[key]){
         const x = p.col*TILE+TILE/2, y = HUD_H+p.row*TILE+TILE/2;
         const color = p.type==='bomb' ? 0x9b59b6 : 0xff8c00;
-        this.powerupGfxMap[key] = this.add.circle(x,y,12,color).setStrokeStyle(2,0xffffff);
+        this.powerupGfxMap[key] = this.add.circle(x,y,12*UI_SCALE,color).setStrokeStyle(Math.round(2*UI_SCALE),0xffffff);
       }
     });
 
@@ -827,12 +894,33 @@ function makeConfig(SceneClass){
   // Phaser 4 defaults roundPixels to false (it was true in v3). This game is a
   // flat-shaded tile grid with adjacent rectangles, so we restore the old
   // behavior explicitly to avoid sub-pixel seams between tiles.
-  return { type: Phaser.AUTO, width: COLS*TILE, height: ROWS*TILE + HUD_H, parent:'game', backgroundColor:'#111', scene: SceneClass, render: { roundPixels: true } };
+  // Scale.FIT keeps the fixed logical resolution (COLS*TILE x ROWS*TILE+HUD_H)
+  // but scales the canvas up or down via CSS to fill its container while
+  // preserving aspect ratio, so the board looks right on a wide 16:9 laptop
+  // screen and a narrow 20:9 phone screen alike.
+  //
+  // The board is now natively sized close to 1080p (see TILE/HUD_H above),
+  // so on a standard 1080p monitor the canvas renders close to 1:1 with no
+  // upscaling blur. `resolution` here only needs to cover devicePixelRatio,
+  // for sharpness on retina/high-DPI screens beyond that.
+  return {
+    type: Phaser.AUTO,
+    parent: 'game',
+    backgroundColor: '#111',
+    scene: SceneClass,
+    resolution: window.devicePixelRatio || 1,
+    render: { roundPixels: true },
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: COLS*TILE,
+      height: ROWS*TILE + HUD_H,
+    },
+  };
 }
 function showGameUI(){
   document.getElementById('lobby').classList.add('hidden');
-  document.getElementById('game').classList.remove('hidden');
-  document.getElementById('hint').classList.remove('hidden');
+  document.getElementById('game-wrap').classList.remove('hidden');
   document.getElementById('touch-controls').classList.remove('hidden');
 }
 function refreshPlayerList(){
@@ -845,12 +933,15 @@ document.getElementById('btn-solo').onclick = () => {
   const botCount = parseInt(document.getElementById('bot-count').value, 10) || 0;
   NET_BOT_COUNT = Math.min(botCount, 3);
   NET_NUM_PLAYERS = 1 + NET_BOT_COUNT;
+  NET_IS_SOLO = true;
   showGameUI();
-  new Phaser.Game(makeConfig(HostScene));
+  document.getElementById('btn-export').classList.remove('hidden');
+  currentGame = new Phaser.Game(makeConfig(HostScene));
 };
 
 document.getElementById('btn-host').onclick = () => {
   NET_BOT_COUNT = 0; // bots are solo-only; hosting is always real players
+  NET_IS_SOLO = false;
   document.getElementById('lobby-msg').textContent = 'Creating room...';
   net.hostGame(
     id => {
@@ -873,7 +964,7 @@ document.getElementById('btn-copy').onclick = () => {
 
 document.getElementById('btn-start').onclick = () => {
   showGameUI();
-  new Phaser.Game(makeConfig(HostScene));
+  currentGame = new Phaser.Game(makeConfig(HostScene));
 };
 
 document.getElementById('btn-join').onclick = () => {
@@ -895,7 +986,11 @@ net.onStart = data => {
   NET_NUM_PLAYERS = data.numPlayers;
   NET_BLOCKS_GRID = data.blocksGrid;
   showGameUI();
-  new Phaser.Game(makeConfig(ClientScene));
+  currentGame = new Phaser.Game(makeConfig(ClientScene));
+};
+
+document.getElementById('btn-export').onclick = () => {
+  if (activeHostScene && activeHostScene.recording) activeHostScene.exportRecording();
 };
 </script>
 </body>
