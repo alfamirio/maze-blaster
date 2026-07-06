@@ -13,9 +13,14 @@
 
   #lobby { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:20px; box-sizing:border-box; }
   #lobby h1 { margin:0 0 8px; font-size:26px; }
-  #lobby-choice, #lobby-status { background:#1b1f24; border:1px solid #2a2f37; border-radius:12px; padding:24px; width:min(360px, 90vw); text-align:center; }
-  #lobby-choice button, #lobby-status button { width:100%; padding:12px; margin:6px 0; border:none; border-radius:8px; font-size:15px; cursor:pointer; background:#3498db; color:#fff; }
+  #lobby-choice, #lobby-status, #options-panel { background:#1b1f24; border:1px solid #2a2f37; border-radius:12px; padding:24px; width:min(360px, 90vw); text-align:center; }
+  #lobby-choice button, #lobby-status button, #options-panel button { width:100%; padding:12px; margin:6px 0; border:none; border-radius:8px; font-size:15px; cursor:pointer; background:#3498db; color:#fff; }
   #lobby-choice .or { color:#777; margin:10px 0; font-size:13px; }
+  #btn-options { background:#3a4048 !important; }
+  #options-panel h2 { margin:0 0 14px; font-size:18px; }
+  .option-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 14px; font-size:14px; color:#ccc; text-align:left; }
+  .option-row select { flex:0 0 auto; padding:6px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
+  #options-hint { font-size:12px; color:#888; margin:-6px 0 14px; text-align:left; }
   #bot-count-row { display:flex; align-items:center; justify-content:center; gap:8px; margin:-2px 0 6px; font-size:13px; color:#aaa; }
   #bot-count-row select { padding:5px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
   #join-code { width:100%; box-sizing:border-box; padding:10px; border-radius:8px; border:1px solid #333; background:#0e1013; color:#eee; font-size:14px; margin-bottom:6px; text-align:center; }
@@ -67,6 +72,24 @@
     <div class="or">— or —</div>
     <input id="join-code" placeholder="Enter room code">
     <button id="btn-join">Join Game</button>
+    <div class="or">— or —</div>
+    <button id="btn-options">⚙ Options</button>
+  </div>
+
+  <div id="options-panel" class="hidden">
+    <h2>Options</h2>
+    <div class="option-row">
+      <label for="map-size">Map size</label>
+      <select id="map-size">
+        <option value="vsmall">Very small (11×7)</option>
+        <option value="small">Small (13×9)</option>
+        <option value="default" selected>Default (15×11)</option>
+        <option value="large">Large (17×13)</option>
+        <option value="xlarge">Very large (19×15)</option>
+      </select>
+    </div>
+    <div id="options-hint">Applies when you start a Solo or Hosted game. Saved on this device.</div>
+    <button id="btn-options-back">Back</button>
   </div>
 
   <div id="lobby-status" class="hidden">
@@ -128,9 +151,22 @@
 // comes out to ~2160, a native "4K-class" render (double the previous
 // 1080p-class pass) instead of being stretched up via CSS/resolution.
 const TILE = 172;
-const COLS = 15;
-const ROWS = 11;
+// COLS/ROWS are mutable (not const) so the Options menu's map-size choice
+// can resize the board before a game starts. Everything else in the file
+// already reads these as variables rather than hardcoding 15/11, so
+// reassigning them here is enough to resize the whole board, HUD, and
+// canvas — see applyMapSize() below.
+let COLS = 15;
+let ROWS = 11;
 const HUD_H = 278;
+const MAP_SIZES = {
+  vsmall:  { cols:11, rows:7  },
+  small:   { cols:13, rows:9  },
+  default: { cols:15, rows:11 },
+  large:   { cols:17, rows:13 },
+  xlarge:  { cols:19, rows:15 },
+};
+let SELECTED_MAP_SIZE = 'default'; // set from the Options menu, applied when a game starts
 // A handful of UI elements (fonts, dot radii, stroke widths, offsets) are
 // specified in fixed pixels rather than as a fraction of TILE. UI_SCALE
 // keeps those visually proportional at the new, larger TILE size.
@@ -159,12 +195,23 @@ const FLAME_TIME = 350;
 const STATE_INTERVAL = 80; // ms between host -> client snapshots (~12Hz)
 
 const PLAYER_COLORS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f];
-const SPAWNS = [
-  { r:1,       c:1,       dr:1,  dc:1  },
-  { r:ROWS-2,  c:COLS-2,  dr:-1, dc:-1 },
-  { r:1,       c:COLS-2,  dr:1,  dc:-1 },
-  { r:ROWS-2,  c:1,       dr:-1, dc:1  },
-];
+// Spawn corners depend on the current COLS/ROWS, so this is a rebuildable
+// value (not a fixed literal) — buildSpawns() re-reads COLS/ROWS each time
+// it's called, and applyMapSize() calls it right after resizing the board.
+function buildSpawns(){
+  return [
+    { r:1,       c:1,       dr:1,  dc:1  },
+    { r:ROWS-2,  c:COLS-2,  dr:-1, dc:-1 },
+    { r:1,       c:COLS-2,  dr:1,  dc:-1 },
+    { r:ROWS-2,  c:1,       dr:-1, dc:1  },
+  ];
+}
+let SPAWNS = buildSpawns();
+function applyMapSize(key){
+  const sz = MAP_SIZES[key] || MAP_SIZES.default;
+  COLS = sz.cols; ROWS = sz.rows;
+  SPAWNS = buildSpawns();
+}
 
 // ====================== POWER-UP VISUALS (shared) ======================
 // Power-ups are drawn as icon-only (no background circle) so the shape
@@ -1126,7 +1173,7 @@ class HostScene extends Phaser.Scene {
     this.gameOver = false;
     this.lastBroadcast = 0;
 
-    net.broadcastStart({ blocksGrid: this.blocksGridBool, numPlayers: NET_NUM_PLAYERS });
+    net.broadcastStart({ blocksGrid: this.blocksGridBool, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS });
   }
 
   isBlocked(r, c){
@@ -1511,6 +1558,46 @@ class ClientScene extends Phaser.Scene {
 // ====================== LOBBY WIRING ======================
 setupTouchControls();
 
+// Options are saved locally (just the map size, for now) so the choice
+// survives a page reload without needing any server/account.
+const SETTINGS_KEY = 'mazeBlasterSettings';
+function loadSettings(){
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved && MAP_SIZES[saved.mapSize]){
+      SELECTED_MAP_SIZE = saved.mapSize;
+      const sel = document.getElementById('map-size');
+      if (sel) sel.value = SELECTED_MAP_SIZE;
+    }
+  } catch (e) {
+    // Corrupted JSON or storage blocked (private browsing, etc) — just
+    // fall back to the default map size instead of breaking the lobby.
+  }
+}
+function saveSettings(){
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE }));
+  } catch (e) {
+    // Storage full or unavailable — the choice just won't persist this time.
+  }
+}
+loadSettings();
+
+document.getElementById('btn-options').onclick = () => {
+  document.getElementById('lobby-choice').classList.add('hidden');
+  document.getElementById('options-panel').classList.remove('hidden');
+};
+document.getElementById('btn-options-back').onclick = () => {
+  document.getElementById('options-panel').classList.add('hidden');
+  document.getElementById('lobby-choice').classList.remove('hidden');
+};
+document.getElementById('map-size').onchange = e => {
+  SELECTED_MAP_SIZE = e.target.value;
+  saveSettings();
+};
+
 function makeConfig(SceneClass){
   // Phaser 4 defaults roundPixels to false (it was true in v3). This game is a
   // flat-shaded tile grid with adjacent rectangles, so we restore the old
@@ -1612,6 +1699,7 @@ document.getElementById('btn-solo').onclick = () => {
   NET_BOT_COUNT = Math.min(botCount, 3);
   NET_NUM_PLAYERS = 1 + NET_BOT_COUNT;
   NET_IS_SOLO = true;
+  applyMapSize(SELECTED_MAP_SIZE);
   showGameUI();
   document.getElementById('btn-export').classList.remove('hidden');
   currentGame = new Phaser.Game(makeConfig(HostScene));
@@ -1642,6 +1730,7 @@ document.getElementById('btn-copy').onclick = () => {
 };
 
 document.getElementById('btn-start').onclick = () => {
+  applyMapSize(SELECTED_MAP_SIZE);
   showGameUI();
   currentGame = new Phaser.Game(makeConfig(HostScene));
 };
@@ -1653,6 +1742,7 @@ document.getElementById('btn-join').onclick = () => {
 net.onStart = data => {
   NET_NUM_PLAYERS = data.numPlayers;
   NET_BLOCKS_GRID = data.blocksGrid;
+  COLS = data.cols; ROWS = data.rows; SPAWNS = buildSpawns();
   showGameUI();
   currentGame = new Phaser.Game(makeConfig(ClientScene));
 };
