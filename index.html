@@ -88,7 +88,14 @@
         <option value="xlarge">Very large (19×15)</option>
       </select>
     </div>
-    <div id="options-hint">Applies when you start a Solo or Hosted game. Saved on this device.</div>
+    <div class="option-row">
+      <label for="sound-toggle">Sound</label>
+      <select id="sound-toggle">
+        <option value="on" selected>On</option>
+        <option value="off">Off</option>
+      </select>
+    </div>
+    <div id="options-hint">Map size applies when you start a Solo or Hosted game. Sound applies immediately. Both are saved on this device.</div>
     <button id="btn-options-back">Back</button>
   </div>
 
@@ -213,6 +220,164 @@ function applyMapSize(key){
   COLS = sz.cols; ROWS = sz.rows;
   SPAWNS = buildSpawns();
 }
+
+// ====================== AUDIO / SFX (Web Audio API, no assets) ======================
+// Same asset-free spirit as the graphics: every sound is synthesized on the
+// fly with oscillators/noise buffers rather than loaded from a file.
+const SFX = (() => {
+  let ctx = null;
+  let enabled = true;
+  function setEnabled(v){ enabled = v; }
+  function getCtx(){
+    if (!enabled) return null;
+    if (!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) ctx = new AC();
+    }
+    // Autoplay policies start the context suspended until a user gesture;
+    // resume it opportunistically every time a sound is requested.
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  // Browsers require a user gesture before audio can play, so kick the
+  // context awake on the very first pointer/key interaction anywhere on
+  // the page (lobby buttons, movement keys, touch controls, etc).
+  const unlock = () => getCtx();
+  window.addEventListener('pointerdown', unlock, { once:true });
+  window.addEventListener('keydown', unlock, { once:true });
+
+  // Subtle descending "plop": a quiet, short sine dip, low enough in the mix
+  // that it doesn't compete with movement. A touch of random pitch/level
+  // variance keeps repeated placements (e.g. bots spamming bombs) from
+  // sounding like the exact same clip looping.
+  function bombPlaced(){
+    const ac = getCtx(); if (!ac) return;
+    const t0 = ac.currentTime;
+    const jitter = 0.92 + Math.random()*0.16; // ~±8%
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(300*jitter, t0);
+    osc.frequency.exponentialRampToValueAtTime(140*jitter, t0 + 0.08);
+    gain.gain.setValueAtTime(0.065, t0);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.1);
+    osc.connect(gain).connect(ac.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.12);
+  }
+
+  // White noise burst run through a low-pass filter that sweeps rapidly
+  // downward (so the crack fizzles into a dull thud), plus a sine "thump"
+  // underneath for low-end body. Trimmed down from the original version so
+  // a chain of several bombs going off doesn't wall-of-noise the mix.
+  function explosion(){
+    const ac = getCtx(); if (!ac) return;
+    const t0 = ac.currentTime;
+    const dur = 0.32;
+    const buffer = ac.createBuffer(1, Math.floor(ac.sampleRate*dur), ac.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i=0;i<data.length;i++) data[i] = Math.random()*2 - 1;
+    const noise = ac.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1800, t0);
+    filter.frequency.exponentialRampToValueAtTime(100, t0 + dur);
+
+    const noiseGain = ac.createGain();
+    noiseGain.gain.setValueAtTime(0.22, t0);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+
+    noise.connect(filter).connect(noiseGain).connect(ac.destination);
+    noise.start(t0);
+    noise.stop(t0 + dur);
+
+    const thump = ac.createOscillator();
+    const thumpGain = ac.createGain();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(110, t0);
+    thump.frequency.exponentialRampToValueAtTime(30, t0 + 0.22);
+    thumpGain.gain.setValueAtTime(0.18, t0);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
+    thump.connect(thumpGain).connect(ac.destination);
+    thump.start(t0);
+    thump.stop(t0 + 0.24);
+  }
+
+  // Soft two-note sine "bell" for a power-up pickup. Replaced the earlier
+  // 4-note triangle-wave arpeggio, which (even quiet) had a bright, buzzy
+  // timbre that got fatiguing fast when pickups happen often. A sine wave
+  // is much gentler on repeat, a filter rounds off what little harshness
+  // sine still has, and a soft linear attack avoids the "click" a hard
+  // onset produces. Slight pitch drift keeps back-to-back pickups from
+  // sounding identical.
+  function powerup(){
+    const ac = getCtx(); if (!ac) return;
+    const t0 = ac.currentTime;
+    const jitter = 0.97 + Math.random()*0.06; // ~±3%
+    const notes = [660, 880]; // E5, A5 — a soft rising fourth
+    notes.forEach((freq, i) => {
+      const t = t0 + i*0.08;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      const filter = ac.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2200;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq*jitter, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(0.045, t + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      osc.connect(filter).connect(gain).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + 0.22);
+    });
+  }
+
+  // Bright major-triad fanfare, rising in pitch, for winning the match.
+  function win(){
+    const ac = getCtx(); if (!ac) return;
+    const t0 = ac.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5]; // C5 E5 G5 C6 E6
+    notes.forEach((freq, i) => {
+      const t = t0 + i*0.11;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.exponentialRampToValueAtTime(0.26, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + 0.42);
+    });
+  }
+
+  // Descending minor sequence with a detuned sawtooth "wah" for losing.
+  function lose(){
+    const ac = getCtx(); if (!ac) return;
+    const t0 = ac.currentTime;
+    const notes = [392, 349.23, 311.13, 261.63]; // G4 F4 Eb4 C4
+    notes.forEach((freq, i) => {
+      const t = t0 + i*0.16;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq*0.94, t + 0.3);
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + 0.34);
+    });
+  }
+
+  return { bombPlaced, explosion, powerup, win, lose, setEnabled };
+})();
 
 // ====================== POWER-UP VISUALS (shared) ======================
 // Power-ups are drawn as icon-only (no background circle) so the shape
@@ -1225,6 +1390,7 @@ class HostScene extends Phaser.Scene {
     else if (pu.type === 'flame') p.blastRange++;
     else if (pu.type === 'speed') p.speed++;
     else this.applyCurse(p);
+    SFX.powerup();
     destroyPowerupVisual(pu.gfx);
     this.powerups[p.row][p.col] = null;
   }
@@ -1241,6 +1407,7 @@ class HostScene extends Phaser.Scene {
     const active = this.countActiveBombs(p);
     if (active >= p.maxBombs) return;
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'bomb', player:p.id, row:p.row, col:p.col, range:p.blastRange });
+    SFX.bombPlaced();
     const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
     const gfx = createBombVisual(this, x, y);
     const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, placedAt:this.time.now };
@@ -1259,6 +1426,7 @@ class HostScene extends Phaser.Scene {
     bomb.exploded = true;
     this.bombs[bomb.row][bomb.col] = null;
     bomb.gfx.destroy();
+    SFX.explosion();
 
     const cells = [{ r: bomb.row, c: bomb.col }];
     const dirs = [
@@ -1341,10 +1509,13 @@ class HostScene extends Phaser.Scene {
     }
     if (NET_NUM_PLAYERS === 1){
       this.winText.setText('You died! (R to retry)');
+      SFX.lose();
       return;
     }
     const winner = this.players.find(p => p.alive);
     this.winText.setText(winner ? `Player ${winner.id+1} wins! (R to restart)` : `Draw! (R to restart)`);
+    if (winner && winner.id === net.myIndex) SFX.win();
+    else SFX.lose();
   }
 
   // Bundles the recorded events into a downloadable JSON file.
@@ -1507,6 +1678,7 @@ class ClientScene extends Phaser.Scene {
     data.bombs.forEach(b => {
       const key = b.row+','+b.col;
       if (!this.bombGfxMap[key]){
+        SFX.bombPlaced();
         const x = b.col*TILE+TILE/2, y = HUD_H+b.row*TILE+TILE/2;
         this.bombGfxMap[key] = createBombVisual(this, x, y);
         // Client doesn't know the real placement time from the host, so it
@@ -1523,6 +1695,7 @@ class ClientScene extends Phaser.Scene {
     data.explosions.forEach(e => {
       const key = e.row+','+e.col;
       if (!this.explosionVisualMap[key]){
+        SFX.explosion();
         const x = e.col*TILE+TILE/2, y = HUD_H+e.row*TILE+TILE/2;
         const armLenPx = { up:e.up*TILE, down:e.down*TILE, left:e.left*TILE, right:e.right*TILE };
         this.explosionVisualMap[key] = { gfx: createExplosionCrossVisual(this, x, y, armLenPx), createdAt: this.time.now };
@@ -1531,7 +1704,7 @@ class ClientScene extends Phaser.Scene {
 
     const puKeys = new Set(data.powerups.map(p => p.row+','+p.col));
     for (const key in this.powerupGfxMap){
-      if (!puKeys.has(key)){ destroyPowerupVisual(this.powerupGfxMap[key]); delete this.powerupGfxMap[key]; }
+      if (!puKeys.has(key)){ SFX.powerup(); destroyPowerupVisual(this.powerupGfxMap[key]); delete this.powerupGfxMap[key]; }
     }
     data.powerups.forEach(p => {
       const key = p.row+','+p.col;
@@ -1544,6 +1717,8 @@ class ClientScene extends Phaser.Scene {
     if (data.over && !this.gameOver){
       this.gameOver = true;
       this.winText.setText(`Player ${data.over.winner+1} wins!`);
+      if (data.over.winner === net.myIndex) SFX.win();
+      else SFX.lose();
     } else if (!data.over && this.gameOver){
       this.gameOver = false;
       this.winText.setText('');
@@ -1578,9 +1753,10 @@ class ClientScene extends Phaser.Scene {
 // ====================== LOBBY WIRING ======================
 setupTouchControls();
 
-// Options are saved locally (just the map size, for now) so the choice
+// Options are saved locally (map size + sound on/off) so the choice
 // survives a page reload without needing any server/account.
 const SETTINGS_KEY = 'mazeBlasterSettings';
+let SOUND_ENABLED = true;
 function loadSettings(){
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -1591,14 +1767,20 @@ function loadSettings(){
       const sel = document.getElementById('map-size');
       if (sel) sel.value = SELECTED_MAP_SIZE;
     }
+    if (saved && typeof saved.soundEnabled === 'boolean'){
+      SOUND_ENABLED = saved.soundEnabled;
+      const sndSel = document.getElementById('sound-toggle');
+      if (sndSel) sndSel.value = SOUND_ENABLED ? 'on' : 'off';
+    }
   } catch (e) {
     // Corrupted JSON or storage blocked (private browsing, etc) — just
-    // fall back to the default map size instead of breaking the lobby.
+    // fall back to the defaults instead of breaking the lobby.
   }
+  SFX.setEnabled(SOUND_ENABLED);
 }
 function saveSettings(){
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, soundEnabled: SOUND_ENABLED }));
   } catch (e) {
     // Storage full or unavailable — the choice just won't persist this time.
   }
@@ -1615,6 +1797,11 @@ document.getElementById('btn-options-back').onclick = () => {
 };
 document.getElementById('map-size').onchange = e => {
   SELECTED_MAP_SIZE = e.target.value;
+  saveSettings();
+};
+document.getElementById('sound-toggle').onchange = e => {
+  SOUND_ENABLED = e.target.value === 'on';
+  SFX.setEnabled(SOUND_ENABLED);
   saveSettings();
 };
 
