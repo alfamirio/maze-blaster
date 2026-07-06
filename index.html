@@ -117,14 +117,14 @@
 // ====================== SHARED CONFIG ======================
 // Board is rendered at native resolution now (not stretched up from a small
 // buffer via Phaser's `resolution` config). TILE/HUD_H are scaled up from
-// their original values (48/78) by ~1.78x, the same multiplier that maps
-// this board's aspect ratio onto a 1080px-tall canvas — so ROWS*TILE+HUD_H
-// comes out to ~1080, a native "1080p-class" render instead of 720x606
-// stretched via CSS/resolution.
-const TILE = 86;
+// their original values (48/78) by ~3.58x, the same multiplier that maps
+// this board's aspect ratio onto a ~2160px-tall canvas (2580×2170) — so ROWS*TILE+HUD_H
+// comes out to ~2160, a native "4K-class" render (double the previous
+// 1080p-class pass) instead of being stretched up via CSS/resolution.
+const TILE = 172;
 const COLS = 15;
 const ROWS = 11;
-const HUD_H = 139;
+const HUD_H = 278;
 // A handful of UI elements (fonts, dot radii, stroke widths, offsets) are
 // specified in fixed pixels rather than as a fraction of TILE. UI_SCALE
 // keeps those visually proportional at the new, larger TILE size.
@@ -899,10 +899,11 @@ function makeConfig(SceneClass){
   // preserving aspect ratio, so the board looks right on a wide 16:9 laptop
   // screen and a narrow 20:9 phone screen alike.
   //
-  // The board is now natively sized close to 1080p (see TILE/HUD_H above),
-  // so on a standard 1080p monitor the canvas renders close to 1:1 with no
-  // upscaling blur. `resolution` here only needs to cover devicePixelRatio,
-  // for sharpness on retina/high-DPI screens beyond that.
+  // The board is now natively sized close to 4K height (see TILE/HUD_H
+  // above: COLS*TILE x ROWS*TILE+HUD_H = 2580x2170), so on a 4K display the
+  // canvas renders close to 1:1 with no upscaling blur. `resolution` here
+  // only needs to cover devicePixelRatio, for sharpness on retina/high-DPI
+  // screens beyond that.
   return {
     type: Phaser.AUTO,
     parent: 'game',
