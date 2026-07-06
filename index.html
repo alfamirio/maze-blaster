@@ -89,13 +89,23 @@
       </select>
     </div>
     <div class="option-row">
+      <label for="game-speed">Speed</label>
+      <select id="game-speed">
+        <option value="vslow">Very slow</option>
+        <option value="slow">Slow</option>
+        <option value="normal" selected>Normal</option>
+        <option value="fast">Fast</option>
+        <option value="vfast">Very fast</option>
+      </select>
+    </div>
+    <div class="option-row">
       <label for="sound-toggle">Sound</label>
       <select id="sound-toggle">
         <option value="on" selected>On</option>
         <option value="off">Off</option>
       </select>
     </div>
-    <div id="options-hint">Map size applies when you start a Solo or Hosted game. Sound applies immediately. Both are saved on this device.</div>
+    <div id="options-hint">Map size and Speed apply when you start a Solo or Hosted game. Sound applies immediately. All are saved on this device.</div>
     <button id="btn-options-back">Back</button>
   </div>
 
@@ -179,28 +189,67 @@ let SELECTED_MAP_SIZE = 'default'; // set from the Options menu, applied when a 
 // specified in fixed pixels rather than as a fraction of TILE. UI_SCALE
 // keeps those visually proportional to TILE.
 const UI_SCALE = TILE / 48;
-const MOVE_INTERVAL = 150;
+// ---- Game speed option ------------------------------------------------
+// All gameplay timings below (move interval, bomb fuse, curse durations,
+// flame lifetime) are expressed as BASE_* values tuned for "Normal" speed.
+// The Options menu's Speed choice scales all of them at once via a single
+// multiplier, so "Very fast" isn't just quicker movement — bombs also fuse
+// faster, curses expire sooner, etc. Lower multiplier = faster game.
+const SPEED_LEVELS = {
+  vslow:  { label: 'Very slow', mult: 1.45 },
+  slow:   { label: 'Slow',      mult: 1.2  },
+  normal: { label: 'Normal',    mult: 1.0  },
+  fast:   { label: 'Fast',      mult: 0.8  },
+  vfast:  { label: 'Very fast', mult: 0.6  },
+};
+let SELECTED_SPEED = 'normal'; // set from the Options menu, applied when a game starts
+
+const BASE_MOVE_INTERVAL = 130;
 // Each "speed" power-up shaves this many ms off a player's own move interval,
 // down to a hard floor so movement never becomes unreadable or breaks the
 // fixed-step netcode assumptions elsewhere (bomb timers, tween durations).
-const SPEED_STEP_MS = 18;
-const MIN_MOVE_INTERVAL = 70;
+const BASE_SPEED_STEP_MS = 16;
+const BASE_MIN_MOVE_INTERVAL = 60;
 // Curse power-up: picking one up applies a random temporary debuff instead of
 // a permanent stat. Kept separate from the permanent stats (speed, bombs,
 // range) so it always expires on its own timer regardless of what else the
 // player has collected.
-const CURSE_DURATION = 8000;
-const CURSE_SLOW_MULT = 1.9;      // move interval multiplier while 'slow'
-const CURSE_AUTOBOMB_EVERY = 700; // ms between forced bomb attempts while 'autobomb'
+const BASE_CURSE_DURATION = 7000;
+const CURSE_SLOW_MULT = 1.9;      // move interval multiplier while 'slow' (unaffected by game speed)
+const BASE_CURSE_AUTOBOMB_EVERY = 600; // ms between forced bomb attempts while 'autobomb'
 const CURSE_TYPES = ['reverse', 'slow', 'autobomb'];
+const BASE_BOMB_FUSE = 1700;
+const BASE_FLAME_TIME = 300;
+const STATE_INTERVAL = 80; // ms between host -> client snapshots (~12Hz) — not scaled, it's a network rate, not gameplay pace
+
+// Mutable, speed-scaled versions of the BASE_* values above. These are what
+// the rest of the game actually reads; applySpeedSetting() recomputes them
+// from SELECTED_SPEED whenever a game is (re)started, on both host and
+// client, so the two stay in lockstep.
+let MOVE_INTERVAL = BASE_MOVE_INTERVAL;
+let SPEED_STEP_MS = BASE_SPEED_STEP_MS;
+let MIN_MOVE_INTERVAL = BASE_MIN_MOVE_INTERVAL;
+let CURSE_DURATION = BASE_CURSE_DURATION;
+let CURSE_AUTOBOMB_EVERY = BASE_CURSE_AUTOBOMB_EVERY;
+let BOMB_FUSE = BASE_BOMB_FUSE;
+let FLAME_TIME = BASE_FLAME_TIME;
+
+function applySpeedSetting(key){
+  const lvl = SPEED_LEVELS[key] || SPEED_LEVELS.normal;
+  const m = lvl.mult;
+  MOVE_INTERVAL = Math.round(BASE_MOVE_INTERVAL * m);
+  SPEED_STEP_MS = Math.round(BASE_SPEED_STEP_MS * m);
+  MIN_MOVE_INTERVAL = Math.round(BASE_MIN_MOVE_INTERVAL * m);
+  CURSE_DURATION = Math.round(BASE_CURSE_DURATION * m);
+  CURSE_AUTOBOMB_EVERY = Math.round(BASE_CURSE_AUTOBOMB_EVERY * m);
+  BOMB_FUSE = Math.round(BASE_BOMB_FUSE * m);
+  FLAME_TIME = Math.round(BASE_FLAME_TIME * m);
+}
 function playerMoveInterval(p){
   let ms = Math.max(MIN_MOVE_INTERVAL, MOVE_INTERVAL - (p.speed||0)*SPEED_STEP_MS);
   if (p.curse && p.curse.type === 'slow') ms = Math.round(ms * CURSE_SLOW_MULT);
   return ms;
 }
-const BOMB_FUSE = 2000;
-const FLAME_TIME = 350;
-const STATE_INTERVAL = 80; // ms between host -> client snapshots (~12Hz)
 
 const PLAYER_COLORS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f];
 // Spawn corners depend on the current COLS/ROWS, so this is a rebuildable
@@ -1358,7 +1407,7 @@ class HostScene extends Phaser.Scene {
     this.gameOver = false;
     this.lastBroadcast = 0;
 
-    net.broadcastStart({ blocksGrid: this.blocksGridBool, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS });
+    net.broadcastStart({ blocksGrid: this.blocksGridBool, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED });
   }
 
   isBlocked(r, c){
@@ -1753,7 +1802,7 @@ class ClientScene extends Phaser.Scene {
 // ====================== LOBBY WIRING ======================
 setupTouchControls();
 
-// Options are saved locally (map size + sound on/off) so the choice
+// Options are saved locally (map size + speed + sound on/off) so the choice
 // survives a page reload without needing any server/account.
 const SETTINGS_KEY = 'mazeBlasterSettings';
 let SOUND_ENABLED = true;
@@ -1766,6 +1815,11 @@ function loadSettings(){
       SELECTED_MAP_SIZE = saved.mapSize;
       const sel = document.getElementById('map-size');
       if (sel) sel.value = SELECTED_MAP_SIZE;
+    }
+    if (saved && SPEED_LEVELS[saved.gameSpeed]){
+      SELECTED_SPEED = saved.gameSpeed;
+      const spdSel = document.getElementById('game-speed');
+      if (spdSel) spdSel.value = SELECTED_SPEED;
     }
     if (saved && typeof saved.soundEnabled === 'boolean'){
       SOUND_ENABLED = saved.soundEnabled;
@@ -1780,7 +1834,7 @@ function loadSettings(){
 }
 function saveSettings(){
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, soundEnabled: SOUND_ENABLED }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED }));
   } catch (e) {
     // Storage full or unavailable — the choice just won't persist this time.
   }
@@ -1797,6 +1851,10 @@ document.getElementById('btn-options-back').onclick = () => {
 };
 document.getElementById('map-size').onchange = e => {
   SELECTED_MAP_SIZE = e.target.value;
+  saveSettings();
+};
+document.getElementById('game-speed').onchange = e => {
+  SELECTED_SPEED = e.target.value;
   saveSettings();
 };
 document.getElementById('sound-toggle').onchange = e => {
@@ -1907,6 +1965,7 @@ document.getElementById('btn-solo').onclick = () => {
   NET_NUM_PLAYERS = 1 + NET_BOT_COUNT;
   NET_IS_SOLO = true;
   applyMapSize(SELECTED_MAP_SIZE);
+  applySpeedSetting(SELECTED_SPEED);
   showGameUI();
   document.getElementById('btn-export').classList.remove('hidden');
   currentGame = new Phaser.Game(makeConfig(HostScene));
@@ -1938,6 +1997,7 @@ document.getElementById('btn-copy').onclick = () => {
 
 document.getElementById('btn-start').onclick = () => {
   applyMapSize(SELECTED_MAP_SIZE);
+  applySpeedSetting(SELECTED_SPEED);
   showGameUI();
   currentGame = new Phaser.Game(makeConfig(HostScene));
 };
@@ -1950,6 +2010,7 @@ net.onStart = data => {
   NET_NUM_PLAYERS = data.numPlayers;
   NET_BLOCKS_GRID = data.blocksGrid;
   COLS = data.cols; ROWS = data.rows; SPAWNS = buildSpawns();
+  applySpeedSetting(data.speed);
   showGameUI();
   currentGame = new Phaser.Game(makeConfig(ClientScene));
 };
