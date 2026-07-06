@@ -136,6 +136,24 @@ const HUD_H = 278;
 // keeps those visually proportional at the new, larger TILE size.
 const UI_SCALE = TILE / 48;
 const MOVE_INTERVAL = 150;
+// Each "speed" power-up shaves this many ms off a player's own move interval,
+// down to a hard floor so movement never becomes unreadable or breaks the
+// fixed-step netcode assumptions elsewhere (bomb timers, tween durations).
+const SPEED_STEP_MS = 18;
+const MIN_MOVE_INTERVAL = 70;
+// Curse power-up: picking one up applies a random temporary debuff instead of
+// a permanent stat. Kept separate from the permanent stats (speed, bombs,
+// range) so it always expires on its own timer regardless of what else the
+// player has collected.
+const CURSE_DURATION = 8000;
+const CURSE_SLOW_MULT = 1.9;      // move interval multiplier while 'slow'
+const CURSE_AUTOBOMB_EVERY = 700; // ms between forced bomb attempts while 'autobomb'
+const CURSE_TYPES = ['reverse', 'slow', 'autobomb'];
+function playerMoveInterval(p){
+  let ms = Math.max(MIN_MOVE_INTERVAL, MOVE_INTERVAL - (p.speed||0)*SPEED_STEP_MS);
+  if (p.curse && p.curse.type === 'slow') ms = Math.round(ms * CURSE_SLOW_MULT);
+  return ms;
+}
 const BOMB_FUSE = 2000;
 const FLAME_TIME = 350;
 const STATE_INTERVAL = 80; // ms between host -> client snapshots (~12Hz)
@@ -150,8 +168,8 @@ const SPAWNS = [
 
 // ====================== POWER-UP VISUALS (shared) ======================
 // Power-ups are drawn as icon-only (no background circle) so the shape
-// itself communicates the effect: a bomb for "+1 bomb" and a fire for
-// "+1 blast range".
+// itself communicates the effect: a bomb for "+1 bomb", a fire for "+1
+// blast range", and a lightning bolt for "+move speed".
 function drawPoly(g, pts, fillColor, strokeColor){
   g.beginPath();
   g.moveTo(pts[0].x, pts[0].y);
@@ -216,12 +234,73 @@ function drawFlameIcon(g){
   ];
   drawPoly(g, core, 0xfff2a8);
 }
+function drawSpeedIcon(g){
+  const s = UI_SCALE * 1.9;
+  // classic zig-zag bolt, drawn slightly tilted; thin bright halo first so
+  // it still pops against a busy floor with no background circle
+  const bolt = [
+    {x:1.5*s,y:-12*s}, {x:-6*s,y:1*s}, {x:-0.5*s,y:1*s}, {x:-2.5*s,y:12*s},
+    {x:6.5*s,y:-2*s}, {x:1*s,y:-2*s}
+  ];
+  g.lineStyle(Math.max(2, 1.4*s), 0xffffff, 0.9);
+  g.beginPath();
+  g.moveTo(bolt[0].x, bolt[0].y);
+  for (let i=1;i<bolt.length;i++) g.lineTo(bolt[i].x, bolt[i].y);
+  g.closePath();
+  g.strokePath();
+  drawPoly(g, bolt, 0xffd700, 0xb8860b);
+  // hot white core sliver down the middle for a bit of "electric" shine
+  const core = [
+    {x:0.6*s,y:-8*s}, {x:-2.8*s,y:1*s}, {x:-0.2*s,y:1*s}, {x:-1.2*s,y:7*s},
+    {x:3*s,y:-1*s}, {x:0.4*s,y:-1*s}
+  ];
+  drawPoly(g, core, 0xfff9c4);
+}
+function drawSkullIcon(g){
+  const s = UI_SCALE * 1.7;
+  // thin white halo, same trick as the other icons, so it still pops with
+  // no background circle — but on a cursed item it reads as "cold" against
+  // the deep violet body instead of warm like the others
+  g.lineStyle(Math.max(2, 1.5*s), 0xffffff, 0.85);
+  g.fillStyle(0x6c3483, 1);
+  // cranium (rounded dome)
+  g.beginPath();
+  g.arc(0, -1*s, 7.2*s, Math.PI, 0, false);
+  g.lineTo(6.2*s, 4*s);
+  g.lineTo(-6.2*s, 4*s);
+  g.closePath();
+  g.strokePath();
+  g.fillPath();
+  // jaw
+  g.fillStyle(0x5b2c6f, 1);
+  g.fillRoundedRect(-4.6*s, 3.2*s, 9.2*s, 4.4*s, 1.6*s);
+  g.lineStyle(Math.max(1, 0.8*s), 0x2c123a, 1);
+  g.strokeRoundedRect(-4.6*s, 3.2*s, 9.2*s, 4.4*s, 1.6*s);
+  // teeth notches
+  g.fillStyle(0x2c123a, 1);
+  g.fillRect(-1.1*s, 3.6*s, 0.9*s, 3.6*s);
+  g.fillRect(0.6*s, 3.6*s, 0.9*s, 3.6*s);
+  // eye sockets (deep black) with a faint sickly-green glow
+  g.fillStyle(0x120a17, 1);
+  g.fillCircle(-3.1*s, -0.8*s, 2.5*s);
+  g.fillCircle(3.1*s, -0.8*s, 2.5*s);
+  g.fillStyle(0x7dff8a, 0.55);
+  g.fillCircle(-3.1*s, -0.8*s, 1.1*s);
+  g.fillCircle(3.1*s, -0.8*s, 1.1*s);
+  // nasal cavity
+  g.fillStyle(0x120a17, 1);
+  const nose = [{x:0,y:0.8*s},{x:-1.3*s,y:2.6*s},{x:1.3*s,y:2.6*s}];
+  drawPoly(g, nose, 0x120a17);
+}
 // Builds the power-up visual (icon only, no background circle) as a
 // container, and makes it float (gentle vertical bob) so it stands out on
 // the floor.
 function createPowerupVisual(scene, x, y, type){
   const icon = scene.add.graphics();
-  if (type === 'bomb') drawBombIcon(icon); else drawFlameIcon(icon);
+  if (type === 'bomb') drawBombIcon(icon);
+  else if (type === 'flame') drawFlameIcon(icon);
+  else if (type === 'speed') drawSpeedIcon(icon);
+  else drawSkullIcon(icon);
   // Shadow stays put on the tile while only the icon bobs above it — the
   // growing/shrinking gap between the two is what actually reads as "floating".
   const shadow = scene.add.ellipse(0, TILE*0.22, TILE*0.34, TILE*0.12, 0x000000, 0.32);
@@ -665,6 +744,17 @@ function setPlayerFacing(p, dr, dc){
   p.facingDr = dr; p.facingDc = dc;
   positionPlayerEyes(p);
 }
+// Shows/hides and pulses the purple curse ring around a player based on
+// whether they currently have an active curse — same helper works on both
+// the host (driven by the real p.curse) and clients (driven by the synced
+// p.cursed boolean from the snapshot).
+function updateCurseRingVisual(p, time){
+  const active = p.curse ? true : !!p.cursed;
+  if (!active){ p.curseRing.setVisible(false); return; }
+  p.curseRing.setVisible(true);
+  const pulse = 0.35 + 0.65*((Math.sin(time/130)+1)/2);
+  p.curseRing.setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0x8e44ad, pulse);
+}
 function makePlayers(scene, numPlayers){
   const players = [];
   for (let i = 0; i < numPlayers; i++){
@@ -675,12 +765,18 @@ function makePlayers(scene, numPlayers){
     // to ground the flat circle players on the tile instead of floating.
     const shadow = scene.add.ellipse(0, TILE*0.30, TILE*0.56, TILE*0.20, 0x000000, 0.35);
     const body = scene.add.circle(0, 0, TILE*0.32, PLAYER_COLORS[i]).setStrokeStyle(Math.round(3*UI_SCALE), 0x111111);
+    // Purple curse ring: sits just outside the body, invisible until a curse
+    // power-up is active, then pulses to nag the player that something is
+    // currently wrong with them.
+    const curseRing = scene.add.circle(0, 0, TILE*0.40, 0x000000, 0)
+      .setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0x8e44ad, 1)
+      .setVisible(false);
     const eyeRad = Math.max(1.5, TILE*0.045);
     const eyeL = scene.add.circle(0, 0, eyeRad, 0x161616);
     const eyeR = scene.add.circle(0, 0, eyeRad, 0x161616);
     const label = scene.add.text(0, -TILE*0.55, 'P'+(i+1), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
-    container.add([shadow, body, eyeL, eyeR, label]);
-    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, alive:true, maxBombs:1, blastRange:2, facingDr:s.dr, facingDc:s.dc };
+    container.add([shadow, body, curseRing, eyeL, eyeR, label]);
+    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, facingDr:s.dr, facingDc:s.dc };
     positionPlayerEyes(player);
     players.push(player);
   }
@@ -1050,7 +1146,7 @@ class HostScene extends Phaser.Scene {
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'move', player:i, row:nr, col:nc });
     const x = nc*TILE + TILE/2, y = HUD_H + nr*TILE + TILE/2;
     this.tweens.add({
-      targets: p.container, x, y, duration: MOVE_INTERVAL - 10,
+      targets: p.container, x, y, duration: playerMoveInterval(p) - 10,
       onComplete: () => { this.playerMoving[i] = false; this.checkPowerupPickup(p); }
     });
   }
@@ -1058,9 +1154,18 @@ class HostScene extends Phaser.Scene {
   checkPowerupPickup(p){
     const pu = this.powerups[p.row][p.col];
     if (!pu) return;
-    if (pu.type === 'bomb') p.maxBombs++; else p.blastRange++;
+    if (pu.type === 'bomb') p.maxBombs++;
+    else if (pu.type === 'flame') p.blastRange++;
+    else if (pu.type === 'speed') p.speed++;
+    else this.applyCurse(p);
     destroyPowerupVisual(pu.gfx);
     this.powerups[p.row][p.col] = null;
+  }
+
+  applyCurse(p){
+    const type = CURSE_TYPES[Math.floor(Math.random()*CURSE_TYPES.length)];
+    p.curse = { type, expiresAt: this.time.now + CURSE_DURATION, nextAutobomb: this.time.now + CURSE_AUTOBOMB_EVERY };
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'curse', player:p.id, curse:type });
   }
 
   placeBomb(p){
@@ -1108,7 +1213,8 @@ class HostScene extends Phaser.Scene {
           this.blocks[r][c] = null;
           this.blocksGridBool[r][c] = false;
           if (Math.random() < 0.35){
-            const type = Math.random() < 0.5 ? 'bomb' : 'flame';
+            const roll = Math.random();
+            const type = roll < 0.32 ? 'bomb' : (roll < 0.62 ? 'flame' : (roll < 0.85 ? 'speed' : 'curse'));
             const px = c*TILE+TILE/2, py = HUD_H+r*TILE+TILE/2;
             this.powerups[r][c] = { type, gfx: createPowerupVisual(this, px, py, type) };
           }
@@ -1147,6 +1253,8 @@ class HostScene extends Phaser.Scene {
   killPlayer(p){
     if (!p.alive) return;
     p.alive = false;
+    p.curse = null;
+    p.curseRing.setVisible(false);
     p.body.setFillStyle(0x333333);
     p.container.setAlpha(0.55);
     const tag = this.controllers[p.id] === 'bot' ? ' \u{1F916}' : '';
@@ -1191,8 +1299,9 @@ class HostScene extends Phaser.Scene {
     for (let i = 0; i < NET_NUM_PLAYERS; i++){
       const p = this.players[i];
       const tag = this.controllers[i] === 'bot' ? '\u{1F916}' : '';
-      this.hudTexts[i].setText(`P${i+1}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}` : 'OUT'));
-      this.hudTexts[i].setColor(p.alive ? '#eee' : '#666');
+      const curseTag = p.curse ? ' \u{1F480}' : '';
+      this.hudTexts[i].setText(`P${i+1}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}` : 'OUT'));
+      this.hudTexts[i].setColor(p.alive ? (p.curse ? '#c39bd3' : '#eee') : '#666');
     }
   }
 
@@ -1202,7 +1311,7 @@ class HostScene extends Phaser.Scene {
     const powerupsList = [];
     for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if (this.powerups[r][c]) powerupsList.push({row:r,col:c,type:this.powerups[r][c].type});
     return {
-      players: this.players.map(p => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange })),
+      players: this.players.map(p => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse })),
       bombs: bombsList,
       explosions: this.explosionVisuals.map(ev => ({ row:ev.row, col:ev.col, up:ev.arm.up, down:ev.arm.down, left:ev.arm.left, right:ev.arm.right })),
       blocksGrid: this.blocksGridBool,
@@ -1226,6 +1335,9 @@ class HostScene extends Phaser.Scene {
         const p = this.players[i];
         if (!p.alive) continue;
 
+        if (p.curse && time >= p.curse.expiresAt) p.curse = null;
+        updateCurseRingVisual(p, time);
+
         let dir, bombPressed;
         if (i === 0){
           dir = readLocalDirection(this.localKeys);
@@ -1240,10 +1352,18 @@ class HostScene extends Phaser.Scene {
           if (this.remoteBombQueue[i] > 0){ this.remoteBombQueue[i]--; bombPressed = true; }
         }
 
+        if (p.curse && p.curse.type === 'reverse'){
+          dir = { up:dir.down, down:dir.up, left:dir.right, right:dir.left };
+        }
+        if (p.curse && p.curse.type === 'autobomb' && time >= p.curse.nextAutobomb){
+          bombPressed = true;
+          p.curse.nextAutobomb = time + CURSE_AUTOBOMB_EVERY;
+        }
+
         if (bombPressed) this.placeBomb(p);
 
         if (this.playerMoving[i]) continue;
-        if (time - this.playerMoveTime[i] < MOVE_INTERVAL) continue;
+        if (time - this.playerMoveTime[i] < playerMoveInterval(p)) continue;
         let dr=0, dc=0;
         if (dir.up) dr=-1; else if (dir.down) dr=1; else if (dir.left) dc=-1; else if (dir.right) dc=1;
         if (dr!==0 || dc!==0){ this.tryMove(i, dr, dc); this.playerMoveTime[i] = time; }
@@ -1296,10 +1416,11 @@ class ClientScene extends Phaser.Scene {
       p.row = pd.row; p.col = pd.col;
       const x = pd.col*TILE + TILE/2, y = HUD_H + pd.row*TILE + TILE/2;
       this.tweens.add({ targets: p.container, x, y, duration: 90 });
-      if (!pd.alive && p.alive){ p.alive = false; p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText('P'+(i+1)+' X'); }
-      p.maxBombs = pd.maxBombs; p.blastRange = pd.blastRange;
-      this.hudTexts[i].setText('P'+(i+1)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange}` : 'OUT'));
-      this.hudTexts[i].setColor(pd.alive ? '#eee' : '#666');
+      if (!pd.alive && p.alive){ p.alive = false; p.cursed = false; p.curseRing.setVisible(false); p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText('P'+(i+1)+' X'); }
+      p.maxBombs = pd.maxBombs; p.blastRange = pd.blastRange; p.speed = pd.speed; p.cursed = pd.cursed;
+      const curseTag = pd.cursed ? ' \u{1F480}' : '';
+      this.hudTexts[i].setText('P'+(i+1)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}` : 'OUT'));
+      this.hudTexts[i].setColor(pd.alive ? (pd.cursed ? '#c39bd3' : '#eee') : '#666');
     });
 
     for (let r=0;r<ROWS;r++){
@@ -1363,6 +1484,7 @@ class ClientScene extends Phaser.Scene {
   }
 
   update(time, delta){
+    for (const p of this.players) updateCurseRingVisual(p, time);
     for (const key in this.bombGfxMap){
       updateBombVisual(this.bombGfxMap[key], this.bombPlacedMap[key], time);
     }
