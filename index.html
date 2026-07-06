@@ -6,6 +6,7 @@
 <title>Maze Blaster</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/4.2.0/phaser.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   html, body { margin:0; padding:0; background:#111; height:100%; overflow:hidden; font-family: system-ui, sans-serif; color:#eee; }
   .hidden { display:none !important; }
@@ -19,6 +20,9 @@
   #bot-count-row select { padding:5px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
   #join-code { width:100%; box-sizing:border-box; padding:10px; border-radius:8px; border:1px solid #333; background:#0e1013; color:#eee; font-size:14px; margin-bottom:6px; text-align:center; }
   #room-code-display { font-size:28px; font-weight:bold; letter-spacing:1px; background:#0e1013; border-radius:8px; padding:12px; margin-bottom:10px; word-break:break-all; }
+  #qr-code { display:flex; justify-content:center; margin:0 0 10px; }
+  #qr-code img, #qr-code canvas { border-radius:8px; background:#fff; padding:8px; }
+  #qr-hint { font-size:12px; color:#888; margin:-4px 0 10px; }
   #btn-copy { background:#555 !important; }
   #player-list { text-align:left; font-size:14px; margin:10px 0; color:#bbb; }
   #lobby-msg { font-size:13px; color:#e67e22; min-height:16px; margin-top:6px; }
@@ -67,6 +71,8 @@
 
   <div id="lobby-status" class="hidden">
     <div id="room-code-display"></div>
+    <div id="qr-code" class="hidden"></div>
+    <div id="qr-hint" class="hidden">Scan to join automatically</div>
     <button id="btn-copy" class="hidden">Copy code</button>
     <div id="player-list"></div>
     <button id="btn-start" class="hidden">Start Game</button>
@@ -118,7 +124,7 @@
 // Board is rendered at native resolution now (not stretched up from a small
 // buffer via Phaser's `resolution` config). TILE/HUD_H are scaled up from
 // their original values (48/78) by ~3.58x, the same multiplier that maps
-// this board's aspect ratio onto a ~2160px-tall canvas (2580×2170) — so ROWS*TILE+HUD_H
+// this board's aspect ratio onto a ~2160px-tall canvas — so ROWS*TILE+HUD_H
 // comes out to ~2160, a native "4K-class" render (double the previous
 // 1080p-class pass) instead of being stretched up via CSS/resolution.
 const TILE = 172;
@@ -930,6 +936,62 @@ function refreshPlayerList(){
   document.getElementById('player-list').innerHTML = html;
 }
 
+// ====================== QR JOIN ======================
+// Hosted URL for this game. The QR code encodes this page's address with the
+// room code attached as a query param, so scanning it on another device
+// opens the game and joins the room automatically (no typing the code in).
+const SITE_URL = 'https://alfamirio.github.io/maze-blaster/';
+
+function buildJoinUrl(roomId){
+  return `${SITE_URL}?room=${encodeURIComponent(roomId)}`;
+}
+
+function showJoinQR(roomId){
+  const qrEl = document.getElementById('qr-code');
+  qrEl.innerHTML = ''; // clear any previous code before drawing a new one
+  new QRCode(qrEl, {
+    text: buildJoinUrl(roomId),
+    width: 180,
+    height: 180,
+    colorDark: '#0e1013',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
+  });
+  qrEl.classList.remove('hidden');
+  document.getElementById('qr-hint').classList.remove('hidden');
+}
+
+// Shared by the Join button and by auto-join-via-URL below.
+function attemptJoin(code){
+  code = (code || '').trim();
+  if (!code) return;
+  document.getElementById('lobby-msg').textContent = 'Connecting...';
+  net.joinGame(
+    code,
+    () => {
+      document.getElementById('lobby-choice').classList.add('hidden');
+      document.getElementById('lobby-status').classList.remove('hidden');
+      document.getElementById('lobby-msg').textContent = 'Connected! Waiting for host to start...';
+    },
+    err => { document.getElementById('lobby-msg').textContent = 'Connection failed: ' + (err.message || err); }
+  );
+}
+
+// If this page was opened from a scanned QR code (or any shared join link),
+// the room code arrives as ?room=CODE — join it automatically instead of
+// making the player type it in.
+function tryAutoJoinFromUrl(){
+  const params = new URLSearchParams(window.location.search);
+  const room = params.get('room');
+  if (!room) return;
+  document.getElementById('join-code').value = room;
+  attemptJoin(room);
+  // Strip the param so a manual refresh/restart doesn't try to rejoin the
+  // same (possibly stale) room automatically.
+  const cleanUrl = window.location.pathname + window.location.hash;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
+
 document.getElementById('btn-solo').onclick = () => {
   const botCount = parseInt(document.getElementById('bot-count').value, 10) || 0;
   NET_BOT_COUNT = Math.min(botCount, 3);
@@ -951,6 +1013,7 @@ document.getElementById('btn-host').onclick = () => {
       document.getElementById('room-code-display').textContent = id;
       document.getElementById('btn-copy').classList.remove('hidden');
       document.getElementById('btn-start').classList.remove('hidden');
+      showJoinQR(id);
       refreshPlayerList();
     },
     err => { document.getElementById('lobby-msg').textContent = 'Error: ' + (err.message || err); }
@@ -969,18 +1032,7 @@ document.getElementById('btn-start').onclick = () => {
 };
 
 document.getElementById('btn-join').onclick = () => {
-  const code = document.getElementById('join-code').value.trim();
-  if (!code) return;
-  document.getElementById('lobby-msg').textContent = 'Connecting...';
-  net.joinGame(
-    code,
-    () => {
-      document.getElementById('lobby-choice').classList.add('hidden');
-      document.getElementById('lobby-status').classList.remove('hidden');
-      document.getElementById('lobby-msg').textContent = 'Connected! Waiting for host to start...';
-    },
-    err => { document.getElementById('lobby-msg').textContent = 'Connection failed: ' + (err.message || err); }
-  );
+  attemptJoin(document.getElementById('join-code').value);
 };
 
 net.onStart = data => {
@@ -989,6 +1041,8 @@ net.onStart = data => {
   showGameUI();
   currentGame = new Phaser.Game(makeConfig(ClientScene));
 };
+
+tryAutoJoinFromUrl();
 
 document.getElementById('btn-export').onclick = () => {
   if (activeHostScene && activeHostScene.recording) activeHostScene.exportRecording();
