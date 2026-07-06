@@ -144,13 +144,11 @@
 */
 
 // ====================== SHARED CONFIG ======================
-// Board is rendered at native resolution now (not stretched up from a small
-// buffer via Phaser's `resolution` config). TILE is scaled up from its
-// original value (48) by ~3.58x, the same multiplier that maps this board's
-// aspect ratio onto a ~2160px-tall canvas — so ROWS*TILE+HUD_H comes out to
-// ~2160, a native "4K-class" render (double the previous 1080p-class pass)
-// instead of being stretched up via CSS/resolution.
-const TILE = 172;
+// Board is rendered at native resolution (not stretched up from a small
+// buffer via Phaser's `resolution` config). TILE is chosen so that on the
+// default map size, ROWS*TILE+HUD_H lands close to 2160px tall — matching
+// 4K UHD's vertical pixel count for a native, non-upscaled canvas.
+const TILE = 185;
 // COLS/ROWS are mutable (not const) so the Options menu's map-size choice
 // can resize the board before a game starts. Everything else in the file
 // already reads these as variables rather than hardcoding 15/11, so
@@ -158,11 +156,9 @@ const TILE = 172;
 // canvas — see applyMapSize() below.
 let COLS = 15;
 let ROWS = 11;
-// HUD_H used to reserve room for two rows (per-player stats, then a win/
-// status line below it). The win/status message now shows as a big overlay
-// banner on top of the maze itself instead (see buildHUD), so HUD_H only
-// needs to cover the single stats row — shrinking it from its old value of
-// 278 hands that freed-up height straight to the maze.
+// HUD_H only needs to cover a single per-player stats row; the win/status
+// message shows as a big overlay banner on top of the maze itself instead
+// (see buildHUD), so the rest of the canvas height goes straight to the maze.
 const HUD_H = 120;
 const MAP_SIZES = {
   vsmall:  { cols:11, rows:7  },
@@ -174,7 +170,7 @@ const MAP_SIZES = {
 let SELECTED_MAP_SIZE = 'default'; // set from the Options menu, applied when a game starts
 // A handful of UI elements (fonts, dot radii, stroke widths, offsets) are
 // specified in fixed pixels rather than as a fraction of TILE. UI_SCALE
-// keeps those visually proportional at the new, larger TILE size.
+// keeps those visually proportional to TILE.
 const UI_SCALE = TILE / 48;
 const MOVE_INTERVAL = 150;
 // Each "speed" power-up shaves this many ms off a player's own move interval,
@@ -1631,11 +1627,11 @@ function makeConfig(SceneClass){
   // preserving aspect ratio, so the board looks right on a wide 16:9 laptop
   // screen and a narrow 20:9 phone screen alike.
   //
-  // The board is now natively sized close to 4K height (see TILE/HUD_H
-  // above: COLS*TILE x ROWS*TILE+HUD_H = 2580x2170), so on a 4K display the
-  // canvas renders close to 1:1 with no upscaling blur. `resolution` here
-  // only needs to cover devicePixelRatio, for sharpness on retina/high-DPI
-  // screens beyond that.
+  // The board is natively sized close to 4K height (see TILE/HUD_H above:
+  // on the default map size, COLS*TILE x ROWS*TILE+HUD_H = 2775x2155), so on
+  // a 4K display the canvas renders close to 1:1 with no upscaling blur.
+  // `resolution` here only needs to cover devicePixelRatio, for sharpness on
+  // retina/high-DPI screens beyond that.
   return {
     type: Phaser.AUTO,
     parent: 'game',
