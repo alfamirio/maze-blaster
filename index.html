@@ -145,11 +145,11 @@
 
 // ====================== SHARED CONFIG ======================
 // Board is rendered at native resolution now (not stretched up from a small
-// buffer via Phaser's `resolution` config). TILE/HUD_H are scaled up from
-// their original values (48/78) by ~3.58x, the same multiplier that maps
-// this board's aspect ratio onto a ~2160px-tall canvas — so ROWS*TILE+HUD_H
-// comes out to ~2160, a native "4K-class" render (double the previous
-// 1080p-class pass) instead of being stretched up via CSS/resolution.
+// buffer via Phaser's `resolution` config). TILE is scaled up from its
+// original value (48) by ~3.58x, the same multiplier that maps this board's
+// aspect ratio onto a ~2160px-tall canvas — so ROWS*TILE+HUD_H comes out to
+// ~2160, a native "4K-class" render (double the previous 1080p-class pass)
+// instead of being stretched up via CSS/resolution.
 const TILE = 172;
 // COLS/ROWS are mutable (not const) so the Options menu's map-size choice
 // can resize the board before a game starts. Everything else in the file
@@ -158,7 +158,12 @@ const TILE = 172;
 // canvas — see applyMapSize() below.
 let COLS = 15;
 let ROWS = 11;
-const HUD_H = 278;
+// HUD_H used to reserve room for two rows (per-player stats, then a win/
+// status line below it). The win/status message now shows as a big overlay
+// banner on top of the maze itself instead (see buildHUD), so HUD_H only
+// needs to cover the single stats row — shrinking it from its old value of
+// 278 hands that freed-up height straight to the maze.
+const HUD_H = 120;
 const MAP_SIZES = {
   vsmall:  { cols:11, rows:7  },
   small:   { cols:13, rows:9  },
@@ -832,15 +837,34 @@ function makePlayers(scene, numPlayers){
 function buildHUD(scene, numPlayers){
   scene.add.rectangle(COLS*TILE/2, HUD_H/2, COLS*TILE, HUD_H, 0x15181d);
   const hudTexts = [];
-  const statsY = 20 * UI_SCALE; // top row: per-player stats
+  const statsY = 20 * UI_SCALE; // only row left in the HUD bar: per-player stats
   const slotW = (COLS*TILE) / numPlayers; // even spacing regardless of player count
   for (let i = 0; i < numPlayers; i++){
     const x = (12*UI_SCALE) + i*slotW;
     scene.add.circle(x, statsY, 9*UI_SCALE, PLAYER_COLORS[i]);
     hudTexts.push(scene.add.text(x+15*UI_SCALE, statsY-8*UI_SCALE, '', { fontSize:Math.round(12*UI_SCALE)+'px', color:'#eee' }));
   }
-  const winY = HUD_H - 18*UI_SCALE; // bottom row: win/status message, kept clear of player stats above
-  const winText = scene.add.text(COLS*TILE/2, winY, '', { fontSize:Math.round(18*UI_SCALE)+'px', color:'#fff', fontStyle:'bold' }).setOrigin(0.5);
+
+  // Win/status message: used to be a permanent second row inside the HUD
+  // bar, taking up board space the entire game even though it's empty
+  // until someone actually wins. It's now a big banner overlaid on the
+  // maze itself (dark strip + bold centered text), created hidden and only
+  // shown once endGame() (or a client snapshot) calls winText.setText(...)
+  // with a real message. `this.winText.setText()` is called from several
+  // places in the file, so this object exposes the same setText() method as
+  // a drop-in replacement for the old Phaser Text object.
+  const bannerY = HUD_H + (ROWS*TILE)/2;
+  const bannerH = Math.round(70 * UI_SCALE);
+  const winBg = scene.add.rectangle(COLS*TILE/2, bannerY, COLS*TILE, bannerH, 0x000000, 0.65).setVisible(false).setDepth(1000);
+  const winLabel = scene.add.text(COLS*TILE/2, bannerY, '', { fontSize:Math.round(34*UI_SCALE)+'px', color:'#fff', fontStyle:'bold' }).setOrigin(0.5).setVisible(false).setDepth(1001);
+  const winText = {
+    setText(msg){
+      winLabel.setText(msg);
+      const show = !!msg;
+      winBg.setVisible(show);
+      winLabel.setVisible(show);
+    }
+  };
   return { hudTexts, winText };
 }
 
