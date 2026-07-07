@@ -99,6 +99,15 @@ function makeConfig(SceneClass){
     scene: SceneClass,
     resolution: 1,
     render: { roundPixels: true },
+    // Cap the render/update loop at 30fps rather than the browser's native
+    // refresh rate. forceSetTimeOut swaps Phaser's internal loop off
+    // requestAnimationFrame (which always fires at display refresh rate,
+    // e.g. 60/120/144Hz, regardless of the `target` below) and onto a
+    // setTimeout-driven loop that actually paces itself to `target`.
+    fps: {
+      target: 30,
+      forceSetTimeOut: true,
+    },
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -142,8 +151,8 @@ function updateFpsDisplay(){
   const fps = Math.round(currentGame.loop.actualFps);
   el.textContent = fps + ' FPS';
   el.classList.remove('hidden');
-  el.classList.toggle('fps-low', fps < 50 && fps >= 30);
-  el.classList.toggle('fps-critical', fps < 30);
+  el.classList.toggle('fps-low', fps < 25 && fps >= 15);
+  el.classList.toggle('fps-critical', fps < 15);
 }
 setInterval(updateFpsDisplay, 500);
 function isTouchDevice(){
