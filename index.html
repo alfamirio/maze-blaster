@@ -47,6 +47,9 @@
   #btn-left { top:59px; left:0; }
   #btn-right { top:59px; right:0; }
   #btn-bomb { width:70px; height:70px; background:rgba(231,76,60,0.5); font-size:14px; }
+  #btn-kick { width:58px; height:58px; background:rgba(241,196,15,0.5); font-size:12px; margin-left:8px; }
+  #btn-detonate { width:58px; height:58px; background:rgba(155,89,182,0.5); font-size:11px; margin-left:8px; }
+  #action-buttons { display:flex; align-items:flex-end; }
 
   #btn-export { position:fixed; top:10px; right:10px; z-index:20; padding:9px 14px; border:none; border-radius:8px; background:#2ecc71; color:#0b1f13; font-size:13px; font-weight:600; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.4); }
   #btn-export:active { background:#27ae60; }
@@ -127,7 +130,7 @@
 
 <div id="game-wrap" class="hidden">
   <div id="game"></div>
-  <div id="hint">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Host presses R to restart</div>
+  <div id="hint">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Kick: K &nbsp;|&nbsp; Remote Bomb: F (place / detonate) &nbsp;|&nbsp; Host presses R to restart</div>
 </div>
 <button id="btn-export" class="hidden">⬇ Export moves (JSON)</button>
 
@@ -138,7 +141,11 @@
     <button id="btn-left">◀</button>
     <button id="btn-right">▶</button>
   </div>
-  <button id="btn-bomb">BOMB</button>
+  <div id="action-buttons">
+    <button id="btn-bomb">BOMB</button>
+    <button id="btn-kick">KICK</button>
+    <button id="btn-detonate">REMOTE</button>
+  </div>
 </div>
 
 <script>
@@ -227,6 +234,17 @@ const BASE_BOMB_FUSE = 1700;
 const BASE_FLAME_TIME = 300;
 const STATE_INTERVAL = 80; // ms between host -> client snapshots (~12Hz) — not scaled, it's a network rate, not gameplay pace
 
+// Kick power-up: a kicked/punched bomb slides one tile every BOMB_SLIDE_MS
+// until it hits a wall, a block, another bomb, or a player, matching the
+// pace of the game's overall speed setting like everything else.
+const BASE_BOMB_SLIDE_MS = 90;
+let BOMB_SLIDE_MS = BASE_BOMB_SLIDE_MS;
+// Heart/Shield power-up: stacks up to this many absorbed hits.
+const MAX_SHIELD = 3;
+// Brief invulnerability after a shield absorbs a hit, so the same lingering
+// flame doesn't burn through every stacked shield in a single instant.
+const SHIELD_HIT_IFRAME_MS = 500;
+
 // Mutable, speed-scaled versions of the BASE_* values above. These are what
 // the rest of the game actually reads; applySpeedSetting() recomputes them
 // from SELECTED_SPEED whenever a game is (re)started, on both host and
@@ -249,6 +267,7 @@ function applySpeedSetting(key){
   CURSE_AUTOBOMB_EVERY = Math.round(BASE_CURSE_AUTOBOMB_EVERY * m);
   BOMB_FUSE = Math.round(BASE_BOMB_FUSE * m);
   FLAME_TIME = Math.round(BASE_FLAME_TIME * m);
+  BOMB_SLIDE_MS = Math.round(BASE_BOMB_SLIDE_MS * m);
 }
 function playerMoveInterval(p){
   let ms = Math.max(MIN_MOVE_INTERVAL, MOVE_INTERVAL - (p.speed||0)*SPEED_STEP_MS);
@@ -431,7 +450,29 @@ const SFX = (() => {
     });
   }
 
-  return { bombPlaced, explosion, powerup, win, lose, setEnabled };
+  // Quick bright-to-dull "clink" for a shield absorbing a hit — distinct from
+  // both the soft powerup pickup chime and the boomy explosion so players can
+  // tell at a glance that they survived instead of dying.
+  function shieldBreak(){
+    const ac = getCtx(); if (!ac) return;
+    const t0 = ac.currentTime;
+    const notes = [1046.5, 523.25]; // C6 down to C5 — a little "crack"
+    notes.forEach((freq, i) => {
+      const t = t0 + i*0.045;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.1, t + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    });
+  }
+
+  return { bombPlaced, explosion, powerup, win, lose, shieldBreak, setEnabled };
 })();
 
 // ====================== POWER-UP VISUALS (shared) ======================
@@ -560,6 +601,120 @@ function drawSkullIcon(g){
   const nose = [{x:0,y:0.8*s},{x:-1.3*s,y:2.6*s},{x:1.3*s,y:2.6*s}];
   drawPoly(g, nose, 0x120a17);
 }
+// Kick/Punch power-up: a stylized boot mid-swing with a couple of motion
+// lines trailing behind it, so it reads as "movement/impact" at a glance.
+function drawKickIcon(g){
+  const s = UI_SCALE * 1.5;
+  g.lineStyle(Math.max(2, 1.5*s), 0xffffff, 0.9);
+  const bootHalo = [
+    {x:-6.5*s,y:-6*s},{x:-1.5*s,y:-7.5*s},{x:2.5*s,y:-5*s},{x:3*s,y:-1*s},
+    {x:8.5*s,y:1.5*s},{x:8.5*s,y:5*s},{x:-2*s,y:5*s},{x:-4*s,y:2.5*s},{x:-6.5*s,y:2*s}
+  ];
+  g.beginPath();
+  g.moveTo(bootHalo[0].x, bootHalo[0].y);
+  for (let i=1;i<bootHalo.length;i++) g.lineTo(bootHalo[i].x, bootHalo[i].y);
+  g.closePath();
+  g.strokePath();
+  // boot body (leather upper + sole)
+  const upper = [
+    {x:-6*s,y:-6*s},{x:-1.5*s,y:-7*s},{x:2*s,y:-4.5*s},{x:2.5*s,y:-1*s},{x:-4.5*s,y:2*s},{x:-6*s,y:1.5*s}
+  ];
+  drawPoly(g, upper, 0x8b5a2b, 0x4a2f16);
+  const sole = [
+    {x:2.5*s,y:-1*s},{x:8*s,y:1.5*s},{x:8*s,y:4.5*s},{x:-2*s,y:4.5*s},{x:-4.5*s,y:2*s}
+  ];
+  drawPoly(g, sole, 0x2c2c2c, 0x111111);
+  // laces
+  g.lineStyle(Math.max(1, 0.8*s), 0xe0c9a6, 1);
+  g.beginPath(); g.moveTo(-4.5*s,-4*s); g.lineTo(-1.5*s,-2.5*s); g.strokePath();
+  g.beginPath(); g.moveTo(-4*s,-2*s); g.lineTo(-1*s,-0.8*s); g.strokePath();
+  // motion lines trailing the kick
+  g.lineStyle(Math.max(1.5, 1.2*s), 0xffe066, 0.85);
+  g.beginPath(); g.moveTo(-9.5*s,-3*s); g.lineTo(-13*s,-3*s); g.strokePath();
+  g.beginPath(); g.moveTo(-9.5*s,0.5*s); g.lineTo(-13.5*s,0.5*s); g.strokePath();
+  g.beginPath(); g.moveTo(-9*s,4*s); g.lineTo(-12*s,4*s); g.strokePath();
+}
+// Heart/Shield power-up: a plain red heart with a small white shine, reading
+// clearly as "protection/health" against the floor.
+function drawHeartIcon(g){
+  const s = UI_SCALE * 1.7;
+  g.lineStyle(Math.max(2, 1.6*s), 0xffffff, 0.9);
+  g.beginPath();
+  g.arc(-3.3*s, -3*s, 4.3*s, Math.PI, 0, false);
+  g.arc(3.3*s, -3*s, 4.3*s, Math.PI, 0, false);
+  g.lineTo(0, 8*s);
+  g.closePath();
+  g.strokePath();
+  g.fillStyle(0xe74c3c, 1);
+  g.beginPath();
+  g.arc(-3.3*s, -3*s, 4.2*s, Math.PI, 0, false);
+  g.arc(3.3*s, -3*s, 4.2*s, Math.PI, 0, false);
+  g.lineTo(0, 7.6*s);
+  g.closePath();
+  g.fillPath();
+  g.lineStyle(Math.max(1, 0.8*s), 0x8e1c14, 1);
+  g.strokePath();
+  // shine
+  g.fillStyle(0xffffff, 0.55);
+  g.fillEllipse(-3.6*s, -4.2*s, 2.6*s, 1.6*s);
+}
+// Pierce Bomb power-up: a bomb body with a bright spike driven straight
+// through it, reading as "this blast punches through obstacles".
+function drawPierceIcon(g){
+  const s = UI_SCALE * 1.6;
+  // halo behind the spike so it pops before the dark bomb body is drawn
+  g.lineStyle(Math.max(2, 1.6*s), 0xffffff, 0.9);
+  g.strokeCircle(0, 1.5*s, 6.6*s);
+  g.fillStyle(0x1c1c1c, 1);
+  g.fillCircle(0, 1.5*s, 6.6*s);
+  g.lineStyle(Math.max(1, 0.8*s), 0x000000, 1);
+  g.strokeCircle(0, 1.5*s, 6.6*s);
+  g.fillStyle(0x4a4a4a, 1);
+  g.fillCircle(-1.9*s, -0.4*s, 1.9*s);
+  // the piercing spike, driven diagonally through the whole icon
+  const spike = [
+    {x:-11*s,y:6*s}, {x:-3*s,y:-2*s}, {x:1.5*s,y:-9.5*s}, {x:3*s,y:-9.5*s},
+    {x:-1*s,y:-1*s}, {x:9*s,y:5.5*s}, {x:6.5*s,y:8*s}, {x:-3.5*s,y:2.5*s}
+  ];
+  drawPoly(g, spike, 0xffe066, 0xb8860b);
+  // hot core sliver down the middle of the spike
+  const core = [
+    {x:-8.5*s,y:5*s}, {x:-1.5*s,y:-3.5*s}, {x:0.5*s,y:-3.5*s}, {x:-6.5*s,y:6.5*s}
+  ];
+  drawPoly(g, core, 0xfff9c4);
+}
+// Remote Detonator power-up: a classic plunger-box trigger, with a couple of
+// motion lines to sell "just pressed" so it reads as active/remote control.
+function drawDetonatorIcon(g){
+  const s = UI_SCALE * 1.6;
+  g.lineStyle(Math.max(2, 1.5*s), 0xffffff, 0.9);
+  // base box
+  const box = [
+    {x:-7*s,y:2*s}, {x:7*s,y:2*s}, {x:6*s,y:9*s}, {x:-6*s,y:9*s}
+  ];
+  g.beginPath();
+  g.moveTo(box[0].x, box[0].y);
+  for (let i=1;i<box.length;i++) g.lineTo(box[i].x, box[i].y);
+  g.closePath();
+  g.strokePath();
+  drawPoly(g, box, 0x2c2c2c, 0x111111);
+  // handle stem
+  g.fillStyle(0x555555, 1);
+  g.fillRect(-1.6*s, -6*s, 3.2*s, 9*s);
+  g.lineStyle(Math.max(1, 0.7*s), 0x111111, 1);
+  g.strokeRect(-1.6*s, -6*s, 3.2*s, 9*s);
+  // red plunger knob
+  g.fillStyle(0xe74c3c, 1);
+  g.fillCircle(0, -7.5*s, 3.6*s);
+  g.lineStyle(Math.max(1, 0.8*s), 0x7a1f1a, 1);
+  g.strokeCircle(0, -7.5*s, 3.6*s);
+  g.fillStyle(0xff8c7a, 0.8);
+  g.fillCircle(-1.1*s, -8.6*s, 1.1*s);
+  // little signal arcs off to the side, showing it's a remote trigger
+  g.lineStyle(Math.max(1.3, 1.1*s), 0xffe066, 0.85);
+  g.beginPath(); g.arc(9*s, -2*s, 3*s, Math.PI*0.9, Math.PI*1.6, false); g.strokePath();
+  g.beginPath(); g.arc(9*s, -2*s, 5.5*s, Math.PI*0.9, Math.PI*1.6, false); g.strokePath();
+}
 // Builds the power-up visual (icon only, no background circle) as a
 // container, and makes it float (gentle vertical bob) so it stands out on
 // the floor.
@@ -568,6 +723,10 @@ function createPowerupVisual(scene, x, y, type){
   if (type === 'bomb') drawBombIcon(icon);
   else if (type === 'flame') drawFlameIcon(icon);
   else if (type === 'speed') drawSpeedIcon(icon);
+  else if (type === 'kick') drawKickIcon(icon);
+  else if (type === 'heart') drawHeartIcon(icon);
+  else if (type === 'pierce') drawPierceIcon(icon);
+  else if (type === 'detonator') drawDetonatorIcon(icon);
   else drawSkullIcon(icon);
   // Shadow stays put on the tile while only the icon bobs above it — the
   // growing/shrinking gap between the two is what actually reads as "floating".
@@ -603,11 +762,17 @@ function lerpColorInt(c1, c2, t){
 const BOMB_BASE_COLOR = { r:0x1c, g:0x1c, b:0x1c };
 const BOMB_HOT_COLOR  = { r:0x5a, g:0x10, b:0x10 };
 const BOMB_FLASH_COLOR= { r:0xff, g:0x40, b:0x40 };
-function createBombVisual(scene, x, y){
-  const circle = scene.add.circle(0, 0, TILE*0.3, 0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE), 0xff5555);
-  const text = scene.add.text(0, 1*UI_SCALE, '', {
+const REMOTE_BOMB_COLOR      = 0x9b59b6; // matches the Detonator power-up/button color
+const REMOTE_BOMB_BASE_COLOR = { r:0x24, g:0x18, b:0x2c };
+const REMOTE_BOMB_FLASH_COLOR= { r:0xaf, g:0x5a, b:0xd6 };
+function createBombVisual(scene, x, y, isRemote){
+  const strokeColor = isRemote ? REMOTE_BOMB_COLOR : 0xff5555;
+  const circle = scene.add.circle(0, 0, TILE*0.3, 0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE), strokeColor);
+  // Remote bombs show a fixed radio glyph instead of a countdown, since they
+  // have no fuse — they only go off when the owner detonates them.
+  const text = scene.add.text(0, 1*UI_SCALE, isRemote ? '\u{1F4E1}' : '', {
     fontFamily: 'system-ui, sans-serif',
-    fontSize: Math.round(17*UI_SCALE)+'px',
+    fontSize: Math.round((isRemote?13:17)*UI_SCALE)+'px',
     fontStyle: 'bold',
     color: '#ffffff',
     stroke: '#000000',
@@ -621,9 +786,19 @@ function createBombVisual(scene, x, y){
   container.circleGfx = circle;
   container.textGfx = text;
   container.pulseGfx = pulse;
+  container.isRemote = !!isRemote;
   return container;
 }
 function updateBombVisual(container, placedAt, now){
+  if (container.isRemote){
+    // No fuse to count down — just a slow, steady "armed and waiting" pulse
+    // so it's clearly distinct from a ticking normal bomb.
+    const flash = (Math.sin((now/1000) * 1.1 * Math.PI*2) + 1) / 2; // 0..1
+    const color = lerpColorInt(REMOTE_BOMB_BASE_COLOR, REMOTE_BOMB_FLASH_COLOR, flash*0.6);
+    container.circleGfx.setFillStyle(color);
+    container.pulseGfx.setScale(1 + flash*0.06);
+    return;
+  }
   const elapsed = now - placedAt;
   const progress = Phaser.Math.Clamp(elapsed / BOMB_FUSE, 0, 1);
   const remaining = Math.max(0, BOMB_FUSE - elapsed);
@@ -736,6 +911,8 @@ function updateExplosionFlameVisual(container, createdAt, now){
 // ====================== TOUCH INPUT (shared) ======================
 const localTouch = { up:false, down:false, left:false, right:false };
 let localBombTapped = false;
+let localKickTapped = false;
+let localDetonateTapped = false;
 
 function setupTouchControls(){
   const bind = (id, key) => {
@@ -747,9 +924,19 @@ function setupTouchControls(){
   };
   bind('btn-up','up'); bind('btn-down','down'); bind('btn-left','left'); bind('btn-right','right');
   document.getElementById('btn-bomb').addEventListener('pointerdown', e => { e.preventDefault(); localBombTapped = true; });
+  document.getElementById('btn-kick').addEventListener('pointerdown', e => { e.preventDefault(); localKickTapped = true; });
+  document.getElementById('btn-detonate').addEventListener('pointerdown', e => { e.preventDefault(); localDetonateTapped = true; });
 }
 function consumeLocalBombTap(){
   if (localBombTapped){ localBombTapped = false; return true; }
+  return false;
+}
+function consumeLocalKickTap(){
+  if (localKickTapped){ localKickTapped = false; return true; }
+  return false;
+}
+function consumeLocalDetonateTap(){
+  if (localDetonateTapped){ localDetonateTapped = false; return true; }
   return false;
 }
 function readLocalDirection(keys){
@@ -770,12 +957,26 @@ function makeLocalKeys(scene){
     right: [kb.addKey('D'), kb.addKey('RIGHT')],
     space: kb.addKey('SPACE'),
     enter: kb.addKey('ENTER'),
+    kick:  kb.addKey('K'),
+    detonate: kb.addKey('F'),
   };
 }
 function localBombJustPressed(keys){
   return Phaser.Input.Keyboard.JustDown(keys.space) ||
          Phaser.Input.Keyboard.JustDown(keys.enter) ||
          consumeLocalBombTap();
+}
+// Explicit "punch/kick" input: shoves a live bomb one tile in the direction
+// the player is currently facing without requiring them to step into it
+// (walking into a bomb while holding the Kick power-up does the same thing,
+// see HostScene.tryMove).
+function localKickJustPressed(keys){
+  return Phaser.Input.Keyboard.JustDown(keys.kick) || consumeLocalKickTap();
+}
+// Remote Bomb input: places the player's one remote bomb if they don't have
+// one out yet, or detonates it right now if they do.
+function localDetonateJustPressed(keys){
+  return Phaser.Input.Keyboard.JustDown(keys.detonate) || consumeLocalDetonateTap();
 }
 
 // ====================== BOARD HELPERS (shared, deterministic) ======================
@@ -1023,6 +1224,12 @@ function updateCurseRingVisual(p, time){
   const pulse = 0.35 + 0.65*((Math.sin(time/130)+1)/2);
   p.curseRing.setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0x8e44ad, pulse);
 }
+// Shows/hides the rosy shield ring based on how many Heart/Shield charges a
+// player currently has banked. Works on both host (real p.shieldCount) and
+// client (mirrored from the snapshot into the same field).
+function updateShieldRingVisual(p){
+  p.shieldRing.setVisible((p.shieldCount || 0) > 0);
+}
 function makePlayers(scene, numPlayers){
   const players = [];
   for (let i = 0; i < numPlayers; i++){
@@ -1039,12 +1246,17 @@ function makePlayers(scene, numPlayers){
     const curseRing = scene.add.circle(0, 0, TILE*0.40, 0x000000, 0)
       .setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0x8e44ad, 1)
       .setVisible(false);
+    // Rosy shield ring: sits just outside the curse ring, shown whenever the
+    // player has at least one Heart/Shield charge banked.
+    const shieldRing = scene.add.circle(0, 0, TILE*0.46, 0x000000, 0)
+      .setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0xff5da2, 1)
+      .setVisible(false);
     const eyeRad = Math.max(1.5, TILE*0.045);
     const eyeL = scene.add.circle(0, 0, eyeRad, 0x161616);
     const eyeR = scene.add.circle(0, 0, eyeRad, 0x161616);
     const label = scene.add.text(0, -TILE*0.55, playerDisplayName(i), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
-    container.add([shadow, body, curseRing, eyeL, eyeR, label]);
-    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, facingDr:s.dr, facingDc:s.dc };
+    container.add([shadow, body, curseRing, shieldRing, eyeL, eyeR, label]);
+    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, hasKick:false, shieldCount:0, pierce:false, hasDetonator:false, remoteBomb:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc };
     positionPlayerEyes(player);
     players.push(player);
   }
@@ -1449,9 +1661,13 @@ class HostScene extends Phaser.Scene {
 
     this.remoteInput = {};      // idx -> {up,down,left,right}
     this.remoteBombQueue = {};  // idx -> pending count
+    this.remoteKickQueue = {};  // idx -> pending count
+    this.remoteDetonateQueue = {}; // idx -> pending count
     net.onInput = (idx, data) => {
       this.remoteInput[idx] = { up:data.up, down:data.down, left:data.left, right:data.right };
       if (data.bombPressed) this.remoteBombQueue[idx] = (this.remoteBombQueue[idx] || 0) + 1;
+      if (data.kickPressed) this.remoteKickQueue[idx] = (this.remoteKickQueue[idx] || 0) + 1;
+      if (data.detonatePressed) this.remoteDetonateQueue[idx] = (this.remoteDetonateQueue[idx] || 0) + 1;
     };
     net.onDisconnect = (idx) => { const p = this.players[idx]; if (p && p.alive) this.killPlayer(p); };
 
@@ -1466,18 +1682,33 @@ class HostScene extends Phaser.Scene {
     net.broadcastStart({ blocksGrid: this.blocksGridBool, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED });
   }
 
-  isBlocked(r, c){
+  // Walls and destructible blocks always block movement, regardless of any
+  // power-up — only a live bomb can potentially be walked through (with the
+  // Kick power-up, by shoving it out of the way first).
+  isBlockedByTerrain(r, c){
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return true;
     if (this.solid[r][c]) return true;
     if (this.blocks[r][c]) return true;
-    if (this.bombs[r][c]) return true;
     return false;
+  }
+
+  isBlocked(r, c){
+    return this.isBlockedByTerrain(r, c) || !!this.bombs[r][c];
   }
 
   tryMove(i, dr, dc){
     const p = this.players[i];
     const nr = p.row + dr, nc = p.col + dc;
-    if (this.isBlocked(nr, nc)) return;
+    if (this.isBlockedByTerrain(nr, nc)) return;
+    const bombAhead = this.bombs[nr][nc];
+    if (bombAhead){
+      // Kick/Punch power-up: walking straight into a live bomb shoves it
+      // one tile further down the line (which then keeps sliding on its
+      // own — see slideBombStep) and the player steps into the tile it
+      // just vacated. Without the power-up, a bomb still blocks like a wall.
+      if (!p.hasKick) return;
+      if (!this.pushBomb(bombAhead, dr, dc)) return;
+    }
     setPlayerFacing(p, dr, dc);
     p.row = nr; p.col = nc; this.playerMoving[i] = true;
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'move', player:i, row:nr, col:nc });
@@ -1488,12 +1719,96 @@ class HostScene extends Phaser.Scene {
     });
   }
 
+  // Can a bomb currently slide onto tile (r,c)? Blocked by the board edge,
+  // walls, destructible blocks, another bomb, or a player standing there —
+  // kicked bombs stop dead rather than overlapping any of those.
+  canBombEnter(r, c){
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
+    if (this.solid[r][c]) return false;
+    if (this.blocks[r][c]) return false;
+    if (this.bombs[r][c]) return false;
+    if (this.players.some(pl => pl.alive && pl.row === r && pl.col === c)) return false;
+    return true;
+  }
+
+  // Kicks off a slide in direction (dr,dc); returns true if the bomb was
+  // able to take at least one step. Used both by walking into a bomb
+  // (tryMove) and by the explicit Kick key/button (doKick).
+  pushBomb(bomb, dr, dc){
+    if (bomb.exploded) return false;
+    if (!this.canBombEnter(bomb.row + dr, bomb.col + dc)) return false;
+    this.slideBombStep(bomb, dr, dc);
+    return true;
+  }
+
+  // Moves a sliding bomb exactly one tile, then — as long as nothing stops
+  // it — schedules the next tile once the tween finishes, so it reads as a
+  // continuous slide down the line rather than a single shove.
+  slideBombStep(bomb, dr, dc){
+    const nr = bomb.row + dr, nc = bomb.col + dc;
+    this.bombs[bomb.row][bomb.col] = null;
+    bomb.row = nr; bomb.col = nc;
+    this.bombs[nr][nc] = bomb;
+    const x = nc*TILE + TILE/2, y = HUD_H + nr*TILE + TILE/2;
+    this.tweens.add({
+      targets: bomb.gfx, x, y, duration: BOMB_SLIDE_MS,
+      onComplete: () => {
+        if (bomb.exploded) return;
+        if (this.canBombEnter(bomb.row + dr, bomb.col + dc)) this.slideBombStep(bomb, dr, dc);
+      }
+    });
+  }
+
+  // Explicit Kick/Punch action: shoves a bomb sitting directly in front of
+  // the player (their current facing direction) without requiring the
+  // player to step into its tile.
+  doKick(p){
+    if (!p.alive || !p.hasKick) return;
+    const dr = p.facingDr, dc = p.facingDc;
+    if (dr === 0 && dc === 0) return;
+    const r = p.row + dr, c = p.col + dc;
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    const bomb = this.bombs[r][c];
+    if (!bomb) return;
+    this.pushBomb(bomb, dr, dc);
+  }
+
+  // Remote Bomb: a separate bomb type from the stackable normal bombs.
+  // Capped at exactly one live at a time no matter how many Detonator
+  // power-ups a player has picked up (picking up extras is a no-op), it has
+  // no fuse, and doesn't consume a normal maxBombs slot. The same button
+  // does double duty: with none out, it places one; with one already out,
+  // it detonates it.
+  detonate(p){
+    if (!p.alive || !p.hasDetonator) return;
+    if (p.remoteBomb) this.explodeBomb(p.remoteBomb);
+    else this.placeRemoteBomb(p);
+  }
+
+  placeRemoteBomb(p){
+    if (this.bombs[p.row][p.col]) return; // tile already holds a bomb
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'remoteBomb', player:p.id, row:p.row, col:p.col, range:p.blastRange });
+    SFX.bombPlaced();
+    const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
+    const gfx = createBombVisual(this, x, y, true);
+    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, pierce:!!p.pierce, placedAt:this.time.now, remote:true };
+    this.bombs[p.row][p.col] = bomb;
+    this.activeBombs.push(bomb);
+    p.remoteBomb = bomb;
+    // No delayedCall here — unlike a normal bomb, this one only goes off
+    // when detonate() is called again.
+  }
+
   checkPowerupPickup(p){
     const pu = this.powerups[p.row][p.col];
     if (!pu) return;
     if (pu.type === 'bomb') p.maxBombs++;
     else if (pu.type === 'flame') p.blastRange++;
     else if (pu.type === 'speed') p.speed++;
+    else if (pu.type === 'kick') p.hasKick = true;
+    else if (pu.type === 'heart') p.shieldCount = Math.min((p.shieldCount||0) + 1, MAX_SHIELD);
+    else if (pu.type === 'pierce') p.pierce = true;
+    else if (pu.type === 'detonator') p.hasDetonator = true;
     else this.applyCurse(p);
     SFX.powerup();
     destroyPowerupVisual(pu.gfx);
@@ -1515,7 +1830,7 @@ class HostScene extends Phaser.Scene {
     SFX.bombPlaced();
     const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
     const gfx = createBombVisual(this, x, y);
-    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, placedAt:this.time.now };
+    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, pierce:!!p.pierce, placedAt:this.time.now };
     this.bombs[p.row][p.col] = bomb;
     this.activeBombs.push(bomb);
     this.time.delayedCall(BOMB_FUSE, () => this.explodeBomb(bomb));
@@ -1523,8 +1838,10 @@ class HostScene extends Phaser.Scene {
 
   countActiveBombs(p){
     // activeBombs is typically just a handful of entries, vs. a ROWS*COLS scan.
+    // Remote bombs are excluded — they're a separate, always-cap-1 pool and
+    // don't eat into a player's normal maxBombs supply.
     let n = 0;
-    for (const bomb of this.activeBombs) if (bomb.owner === p) n++;
+    for (const bomb of this.activeBombs) if (bomb.owner === p && !bomb.remote) n++;
     return n;
   }
 
@@ -1534,6 +1851,7 @@ class HostScene extends Phaser.Scene {
     this.bombs[bomb.row][bomb.col] = null;
     const idx = this.activeBombs.indexOf(bomb);
     if (idx !== -1) this.activeBombs.splice(idx, 1);
+    if (bomb.remote && bomb.owner.remoteBomb === bomb) bomb.owner.remoteBomb = null;
     bomb.gfx.destroy();
     SFX.explosion();
 
@@ -1558,13 +1876,26 @@ class HostScene extends Phaser.Scene {
           this.blocksGridBool[r][c] = false;
           if (Math.random() < 0.35){
             const roll = Math.random();
-            const type = roll < 0.32 ? 'bomb' : (roll < 0.62 ? 'flame' : (roll < 0.85 ? 'speed' : 'curse'));
+            const type = roll < 0.15 ? 'bomb'
+                       : roll < 0.30 ? 'flame'
+                       : roll < 0.42 ? 'speed'
+                       : roll < 0.54 ? 'kick'
+                       : roll < 0.66 ? 'heart'
+                       : roll < 0.78 ? 'pierce'
+                       : roll < 0.88 ? 'detonator'
+                       : 'curse';
             const px = c*TILE+TILE/2, py = HUD_H+r*TILE+TILE/2;
             this.powerups[r][c] = { type, gfx: createPowerupVisual(this, px, py, type) };
           }
-          break;
+          // Pierce Bomb: the blast punches through the block it just
+          // destroyed and keeps going, instead of stopping here like a
+          // normal bomb's blast would.
+          if (!bomb.pierce) break;
         }
-        if (this.bombs[r][c]){ this.explodeBomb(this.bombs[r][c]); break; }
+        if (this.bombs[r][c]){
+          this.explodeBomb(this.bombs[r][c]);
+          if (!bomb.pierce) break;
+        }
       }
     }
     const now = this.time.now;
@@ -1582,7 +1913,8 @@ class HostScene extends Phaser.Scene {
       this.flames = this.flames.filter(f => f.expire > now);
       for (const p of this.players){
         if (!p.alive) continue;
-        if (this.flames.some(f => f.r === p.row && f.c === p.col)) this.killPlayer(p);
+        if (p.invulnerableUntil && now < p.invulnerableUntil) continue;
+        if (this.flames.some(f => f.r === p.row && f.c === p.col)) this.hitPlayer(p, now);
       }
     }
     if (this.explosionVisuals.length){
@@ -1594,11 +1926,33 @@ class HostScene extends Phaser.Scene {
     }
   }
 
+  // Called whenever flame touches a living player. If they have a banked
+  // Heart/Shield charge it's consumed and they merely "break" (a visible
+  // flash + sound, briefly invulnerable) rather than being eliminated;
+  // otherwise it's a normal elimination.
+  hitPlayer(p, now){
+    if (!p.alive) return;
+    if (p.shieldCount > 0){
+      p.shieldCount--;
+      p.invulnerableUntil = (now !== undefined ? now : this.time.now) + SHIELD_HIT_IFRAME_MS;
+      SFX.shieldBreak();
+      this.tweens.add({ targets: p.body, alpha: 0.25, duration: 90, yoyo: true, repeat: 1 });
+      if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'shieldBreak', player:p.id });
+      return;
+    }
+    this.killPlayer(p);
+  }
+
   killPlayer(p){
     if (!p.alive) return;
+    // A dead player can no longer press detonate, so clear out any remote
+    // bomb they left armed rather than leaving a permanent dud on the board.
+    if (p.remoteBomb) this.explodeBomb(p.remoteBomb);
     p.alive = false;
     p.curse = null;
     p.curseRing.setVisible(false);
+    p.shieldCount = 0;
+    p.shieldRing.setVisible(false);
     p.body.setFillStyle(0x333333);
     p.container.setAlpha(0.55);
     const tag = this.controllers[p.id] === 'bot' ? ' \u{1F916}' : '';
@@ -1647,17 +2001,21 @@ class HostScene extends Phaser.Scene {
       const p = this.players[i];
       const tag = this.controllers[i] === 'bot' ? '\u{1F916}' : '';
       const curseTag = p.curse ? ' \u{1F480}' : '';
-      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}` : 'OUT'));
+      const kickTag = p.hasKick ? ' \u{1F45F}' : '';
+      const shieldTag = p.shieldCount > 0 ? ` \u{1F6E1}${p.shieldCount}` : '';
+      const pierceTag = p.pierce ? ' \u{1F4A5}' : '';
+      const detonatorTag = p.hasDetonator ? ' \u{1F4E1}' : '';
+      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}` : 'OUT'));
       this.hudTexts[i].setColor(p.alive ? (p.curse ? '#c39bd3' : '#eee') : '#666');
     }
   }
 
   buildSnapshot(){
-    const bombsList = this.activeBombs.map(b => ({ row:b.row, col:b.col }));
+    const bombsList = this.activeBombs.map(b => ({ row:b.row, col:b.col, remote:!!b.remote }));
     const powerupsList = [];
     for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if (this.powerups[r][c]) powerupsList.push({row:r,col:c,type:this.powerups[r][c].type});
     return {
-      players: this.players.map(p => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse })),
+      players: this.players.map(p => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse, hasKick:!!p.hasKick, shieldCount:p.shieldCount||0, pierce:!!p.pierce, hasDetonator:!!p.hasDetonator })),
       bombs: bombsList,
       explosions: this.explosionVisuals.map(ev => ({ row:ev.row, col:ev.col, up:ev.arm.up, down:ev.arm.down, left:ev.arm.left, right:ev.arm.right })),
       blocksGrid: this.blocksGridBool,
@@ -1680,11 +2038,14 @@ class HostScene extends Phaser.Scene {
 
         if (p.curse && time >= p.curse.expiresAt) p.curse = null;
         updateCurseRingVisual(p, time);
+        updateShieldRingVisual(p);
 
-        let dir, bombPressed;
+        let dir, bombPressed, kickPressed = false, detonatePressed = false;
         if (i === 0){
           dir = readLocalDirection(this.localKeys);
           bombPressed = localBombJustPressed(this.localKeys);
+          kickPressed = localKickJustPressed(this.localKeys);
+          detonatePressed = localDetonateJustPressed(this.localKeys);
         } else if (this.controllers[i] === 'bot'){
           const action = botDecide(this, i, time);
           dir = action.dir;
@@ -1693,6 +2054,8 @@ class HostScene extends Phaser.Scene {
           dir = this.remoteInput[i] || { up:false, down:false, left:false, right:false };
           bombPressed = false;
           if (this.remoteBombQueue[i] > 0){ this.remoteBombQueue[i]--; bombPressed = true; }
+          if (this.remoteKickQueue[i] > 0){ this.remoteKickQueue[i]--; kickPressed = true; }
+          if (this.remoteDetonateQueue[i] > 0){ this.remoteDetonateQueue[i]--; detonatePressed = true; }
         }
 
         if (p.curse && p.curse.type === 'reverse'){
@@ -1704,6 +2067,8 @@ class HostScene extends Phaser.Scene {
         }
 
         if (bombPressed) this.placeBomb(p);
+        if (kickPressed) this.doKick(p);
+        if (detonatePressed) this.detonate(p);
 
         if (this.playerMoving[i]) continue;
         if (time - this.playerMoveTime[i] < playerMoveInterval(p)) continue;
@@ -1759,10 +2124,23 @@ class ClientScene extends Phaser.Scene {
       p.row = pd.row; p.col = pd.col;
       const x = pd.col*TILE + TILE/2, y = HUD_H + pd.row*TILE + TILE/2;
       this.tweens.add({ targets: p.container, x, y, duration: 90 });
-      if (!pd.alive && p.alive){ p.alive = false; p.cursed = false; p.curseRing.setVisible(false); p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText(playerDisplayName(i)+' X'); }
+      if (!pd.alive && p.alive){ p.alive = false; p.cursed = false; p.curseRing.setVisible(false); p.shieldCount = 0; p.shieldRing.setVisible(false); p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText(playerDisplayName(i)+' X'); }
+      // A shield count that dropped (but the player is still alive) means a
+      // shield just absorbed a hit — play the same flash/sound the host does.
+      if (pd.alive && p.alive && (pd.shieldCount||0) < (p.shieldCount||0)){
+        SFX.shieldBreak();
+        this.tweens.add({ targets: p.body, alpha: 0.25, duration: 90, yoyo: true, repeat: 1 });
+      }
       p.maxBombs = pd.maxBombs; p.blastRange = pd.blastRange; p.speed = pd.speed; p.cursed = pd.cursed;
+      p.hasKick = !!pd.hasKick; p.shieldCount = pd.shieldCount||0;
+      p.pierce = !!pd.pierce; p.hasDetonator = !!pd.hasDetonator;
+      updateShieldRingVisual(p);
       const curseTag = pd.cursed ? ' \u{1F480}' : '';
-      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}` : 'OUT'));
+      const kickTag = pd.hasKick ? ' \u{1F45F}' : '';
+      const shieldTag = pd.shieldCount > 0 ? ` \u{1F6E1}${pd.shieldCount}` : '';
+      const pierceTag = pd.pierce ? ' \u{1F4A5}' : '';
+      const detonatorTag = pd.hasDetonator ? ' \u{1F4E1}' : '';
+      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}` : 'OUT'));
       this.hudTexts[i].setColor(pd.alive ? (pd.cursed ? '#c39bd3' : '#eee') : '#666');
     });
 
@@ -1785,7 +2163,7 @@ class ClientScene extends Phaser.Scene {
       if (!this.bombGfxMap[key]){
         SFX.bombPlaced();
         const x = b.col*TILE+TILE/2, y = HUD_H+b.row*TILE+TILE/2;
-        this.bombGfxMap[key] = createBombVisual(this, x, y);
+        this.bombGfxMap[key] = createBombVisual(this, x, y, b.remote);
         // Client doesn't know the real placement time from the host, so it
         // approximates "now" as the fuse start; this is off by at most one
         // network round-trip, which isn't visually noticeable.
@@ -1841,14 +2219,16 @@ class ClientScene extends Phaser.Scene {
     }
     const dir = readLocalDirection(this.localKeys);
     const bombPressed = localBombJustPressed(this.localKeys);
+    const kickPressed = localKickJustPressed(this.localKeys);
+    const detonatePressed = localDetonateJustPressed(this.localKeys);
     this.sendTimer += delta;
 
     const changed = !this.lastSentMove ||
       dir.up !== this.lastSentMove.up || dir.down !== this.lastSentMove.down ||
       dir.left !== this.lastSentMove.left || dir.right !== this.lastSentMove.right;
 
-    if (changed || bombPressed || this.sendTimer > 250){
-      net.sendInput({ up:dir.up, down:dir.down, left:dir.left, right:dir.right, bombPressed });
+    if (changed || bombPressed || kickPressed || detonatePressed || this.sendTimer > 250){
+      net.sendInput({ up:dir.up, down:dir.down, left:dir.left, right:dir.right, bombPressed, kickPressed, detonatePressed });
       this.lastSentMove = dir;
       this.sendTimer = 0;
     }
