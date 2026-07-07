@@ -1,0 +1,391 @@
+// ====================== BOARD HELPERS (shared, deterministic) ======================
+// Tiny deterministic PRNG (per-tile seed) so grass speckles/stone seams are
+// stable across redraws instead of re-randomizing every time the board builds.
+function tileRand(seed){
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+// Grass floor tile: base color plus a scattering of subtle darker/lighter
+// speckles so it reads as mottled turf instead of a flat color swatch.
+function drawFloorTile(scene, r, c){
+  const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
+  const shade = (r+c) % 2 === 0 ? 0x2f6b2f : 0x276227;
+  scene.add.rectangle(x, y, TILE-2, TILE-2, shade);
+
+  const rand = tileRand(r*73856093 ^ c*19349663);
+  const speck = scene.add.graphics();
+  speck.x = x; speck.y = y;
+  const lightColor = (r+c) % 2 === 0 ? 0x3d7d3d : 0x347334;
+  const darkColor  = (r+c) % 2 === 0 ? 0x255525 : 0x1f4a1f;
+  const dotCount = 7 + Math.floor(rand()*5);
+  for (let i = 0; i < dotCount; i++){
+    const px = (rand()-0.5) * (TILE-10);
+    const py = (rand()-0.5) * (TILE-10);
+    const rad = (1.2 + rand()*1.6) * UI_SCALE;
+    speck.fillStyle(rand() < 0.5 ? lightColor : darkColor, 0.3);
+    speck.fillCircle(px, py, rad);
+  }
+}
+
+// Indestructible wall/pillar block: beveled "solid stone" look — light
+// top/left bevel faces, dark bottom/right bevel faces, a slightly recessed
+// inner face, and faint seam lines suggesting a carved stone block.
+function drawWallBlock(scene, r, c){
+  const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
+  const s = TILE - 2;
+  const half = s / 2;
+  const bevel = Math.max(4, Math.round(TILE * 0.1));
+  const baseColor  = 0x656b76;
+  const lightColor = 0x9aa1ac;
+  const darkColor  = 0x35383e;
+  const innerColor = 0x5a5f69;
+
+  const container = scene.add.container(x, y);
+
+  const body = scene.add.rectangle(0, 0, s, s, baseColor)
+    .setStrokeStyle(Math.round(2*UI_SCALE), 0x24262b);
+  container.add(body);
+
+  const bevelGfx = scene.add.graphics();
+  // top face (light)
+  bevelGfx.fillStyle(lightColor, 0.95);
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  // left face (light)
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.lineTo(-half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  // bottom face (dark)
+  bevelGfx.fillStyle(darkColor, 0.95);
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, half);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  // right face (dark)
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  container.add(bevelGfx);
+
+  const inner = scene.add.rectangle(0, 0, s - bevel*2, s - bevel*2, innerColor);
+  container.add(inner);
+
+  const seam = scene.add.graphics();
+  seam.lineStyle(Math.max(1, Math.round(1.5*UI_SCALE)), 0x484c54, 0.6);
+  seam.beginPath();
+  seam.moveTo(-half+bevel, 0); seam.lineTo(half-bevel, 0);
+  seam.moveTo(0, -half+bevel); seam.lineTo(0, half-bevel);
+  seam.strokePath();
+  container.add(seam);
+}
+
+function buildStaticBoard(scene, pillars = true){
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      drawFloorTile(scene, r, c);
+    }
+  }
+  const solid = [];
+  for (let r = 0; r < ROWS; r++){
+    solid.push(new Array(COLS).fill(false));
+    for (let c = 0; c < COLS; c++){
+      const isBorder = r === 0 || c === 0 || r === ROWS-1 || c === COLS-1;
+      const isPillar = pillars && r % 2 === 0 && c % 2 === 0;
+      if (isBorder || isPillar){
+        solid[r][c] = true;
+        drawWallBlock(scene, r, c);
+      }
+    }
+  }
+  return solid;
+}
+// A handful of crack layouts (as fractions of the crate's half-width), picked
+// deterministically per-tile so neighboring crates don't all look identical.
+// Each crack is a 3-point jagged line (start -> kink -> end).
+const CRACK_VARIANTS = [
+  [[-0.55,-0.6, -0.1,-0.05, 0.35,0.2], [0.5,-0.5, 0.05,0.15, -0.3,0.55]],
+  [[-0.3,-0.65, 0.05,-0.1, -0.35,0.4], [0.55,-0.2, 0.1,0.05, 0.4,0.6]],
+  [[-0.6,0.1, -0.1,0.0, 0.3,-0.45],   [0.15,0.6, -0.05,0.1, -0.55,-0.25]],
+  [[-0.15,-0.6, 0.1,-0.1, 0.55,0.15], [-0.5,0.5, -0.15,0.05, 0.2,-0.35]],
+];
+function drawBlock(scene, r, c){
+  const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
+  const container = scene.add.container(x, y);
+
+  const s = TILE - 4;
+  const half = s / 2;
+  const bevel = Math.max(3, Math.round(TILE * 0.07)); // shallower than the stone walls' bevel
+
+  const body = scene.add.rectangle(0, 0, s, s, 0x8a5a2e).setStrokeStyle(Math.round(2*UI_SCALE), 0x5c3b1e);
+  container.add(body);
+
+  // Beveled crate faces (lighter top/left catching light, darker bottom/right
+  // in shadow) give the crate a raised, chunky look — but kept shallow and
+  // paired with the cracks below so it still reads as breakable wood, not a
+  // solid stone block.
+  const bevelGfx = scene.add.graphics();
+  bevelGfx.fillStyle(0xb07a3e, 0.9); // lit top/left faces
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, -half);
+  bevelGfx.lineTo(-half+bevel, -half+bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.lineTo(-half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  bevelGfx.fillStyle(0x5c3b1e, 0.9); // shadowed bottom/right faces
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(-half, half);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(-half+bevel, half-bevel);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  bevelGfx.beginPath();
+  bevelGfx.moveTo(half, -half);
+  bevelGfx.lineTo(half-bevel, -half+bevel);
+  bevelGfx.lineTo(half-bevel, half-bevel);
+  bevelGfx.lineTo(half, half);
+  bevelGfx.closePath();
+  bevelGfx.fillPath();
+  container.add(bevelGfx);
+
+  // Recessed inner plank face, slightly different tone from the bevel edges
+  // so the crate reads as a raised block rather than a flat sticker.
+  const inner = scene.add.rectangle(0, 0, s - bevel*2, s - bevel*2, 0x8a5a2e);
+  container.add(inner);
+
+  // Crack lines make it obvious at a glance that this block can be broken
+  // (as opposed to the solid indestructible pillars/walls).
+  const variant = CRACK_VARIANTS[Math.abs(r*3 + c*7) % CRACK_VARIANTS.length];
+  const cracks = scene.add.graphics();
+  cracks.lineStyle(Math.max(1, Math.round(2*UI_SCALE)), 0x4a2f18, 0.9);
+  variant.forEach(pts => {
+    cracks.beginPath();
+    cracks.moveTo(pts[0]*half, pts[1]*half);
+    cracks.lineTo(pts[2]*half, pts[3]*half);
+    cracks.lineTo(pts[4]*half, pts[5]*half);
+    cracks.strokePath();
+  });
+  container.add(cracks);
+
+  // A chipped-off corner sells "damaged / breakable" even faster than the
+  // crack lines alone, especially at a glance or small size.
+  const chip = TILE*0.16;
+  const chipGfx = scene.add.graphics();
+  chipGfx.fillStyle(0x5c3b1e, 1);
+  chipGfx.beginPath();
+  chipGfx.moveTo(half - chip, -half);
+  chipGfx.lineTo(half, -half);
+  chipGfx.lineTo(half, -half + chip);
+  chipGfx.closePath();
+  chipGfx.fillPath();
+  container.add(chipGfx);
+
+  return container;
+}
+// Eyes are two small dots whose position within the face shifts toward
+// whatever direction the player is currently facing (last direction moved),
+// so at a glance you can tell where everyone's headed without any sprite
+// animation — just geometry.
+function positionPlayerEyes(p){
+  let dr = p.facingDr || 0, dc = p.facingDc || 0;
+  if (dr === 0 && dc === 0){ dr = 1; dc = 0; } // fallback: look "down" toward camera
+  const mag = Math.hypot(dc, dr) || 1;
+  const dx = dc/mag, dy = dr/mag; // forward direction in screen space
+  const forward = TILE*0.11;   // how far the eye pair shifts toward the facing side
+  const spacing = TILE*0.17;   // distance between the two eyes
+  const cx = dx*forward, cy = dy*forward;
+  const px = -dy*(spacing/2), py = dx*(spacing/2); // perpendicular to facing
+  p.eyeL.setPosition(cx + px, cy + py);
+  p.eyeR.setPosition(cx - px, cy - py);
+}
+function setPlayerFacing(p, dr, dc){
+  if (dr === 0 && dc === 0) return; // stayed put: keep last facing
+  if (p.facingDr === dr && p.facingDc === dc) return;
+  p.facingDr = dr; p.facingDc = dc;
+  positionPlayerEyes(p);
+}
+// Shows/hides and pulses the purple curse ring around a player based on
+// whether they currently have an active curse — same helper works on both
+// the host (driven by the real p.curse) and clients (driven by the synced
+// p.cursed boolean from the snapshot).
+function updateCurseRingVisual(p, time){
+  const active = p.curse ? true : !!p.cursed;
+  if (!active){ p.curseRing.setVisible(false); return; }
+  p.curseRing.setVisible(true);
+  const pulse = 0.35 + 0.65*((Math.sin(time/130)+1)/2);
+  p.curseRing.setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0x8e44ad, pulse);
+}
+// Shows/hides the rosy shield ring based on how many Heart/Shield charges a
+// player currently has banked. Works on both host (real p.shieldCount) and
+// client (mirrored from the snapshot into the same field).
+function updateShieldRingVisual(p){
+  p.shieldRing.setVisible((p.shieldCount || 0) > 0);
+}
+function makePlayers(scene, numPlayers){
+  const players = [];
+  for (let i = 0; i < numPlayers; i++){
+    const s = SPAWNS[i];
+    const x = s.c*TILE + TILE/2, y = HUD_H + s.r*TILE + TILE/2;
+    const container = scene.add.container(x, y);
+    // Soft elliptical shadow, drawn first so it sits under everything else,
+    // to ground the flat circle players on the tile instead of floating.
+    const shadow = scene.add.ellipse(0, TILE*0.30, TILE*0.56, TILE*0.20, 0x000000, 0.35);
+    const body = scene.add.circle(0, 0, TILE*0.32, PLAYER_COLORS[i]).setStrokeStyle(Math.round(3*UI_SCALE), 0x111111);
+    // Purple curse ring: sits just outside the body, invisible until a curse
+    // power-up is active, then pulses to nag the player that something is
+    // currently wrong with them.
+    const curseRing = scene.add.circle(0, 0, TILE*0.40, 0x000000, 0)
+      .setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0x8e44ad, 1)
+      .setVisible(false);
+    // Rosy shield ring: sits just outside the curse ring, shown whenever the
+    // player has at least one Heart/Shield charge banked.
+    const shieldRing = scene.add.circle(0, 0, TILE*0.46, 0x000000, 0)
+      .setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0xff5da2, 1)
+      .setVisible(false);
+    const eyeRad = Math.max(1.5, TILE*0.045);
+    const eyeL = scene.add.circle(0, 0, eyeRad, 0x161616);
+    const eyeR = scene.add.circle(0, 0, eyeRad, 0x161616);
+    const label = scene.add.text(0, -TILE*0.55, playerDisplayName(i), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
+    container.add([shadow, body, curseRing, shieldRing, eyeL, eyeR, label]);
+    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, hasKick:false, shieldCount:0, pierce:false, hasDetonator:false, remoteBomb:null, hasMine:false, activeMine:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc };
+    positionPlayerEyes(player);
+    players.push(player);
+  }
+  return players;
+}
+// Formats a duration in milliseconds as "M:SS" (or "MM:SS" past 9:59) for the
+// match timer. Clamped at 0 so a slightly-negative rounding blip (possible in
+// the first frame or two after create()) never flashes a "-0:01".
+// Ping quality indicator: green under ~40ms (great), yellow 40-160ms (typical
+// home wifi — still fine to play on), red above 160ms (noticeably laggy).
+function pingQualityEmoji(ms){
+  if (ms < 40) return '\u{1F7E2}';   // 🟢
+  if (ms <= 160) return '\u{1F7E1}'; // 🟡
+  return '\u{1F534}';                // 🔴
+}
+
+function formatMatchTime(ms){
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+// ====================== FOG OF WAR (visual only, per-viewer) ======================
+// One Graphics object, redrawn every frame: fully dark everywhere except a
+// small square around the given player's current tile, with one soft
+// in-between ring. Runs independently on the host's own screen and on each
+// client's own screen — every viewer sees fog centered on *their own*
+// player, not a shared board-wide reveal.
+function createFogOverlay(scene){
+  return scene.add.graphics().setDepth(900);
+}
+function updateFogOverlay(gfx, player){
+  gfx.clear();
+  if (!player || !player.alive) return; // eliminated/spectating players see the whole board
+  const pr = player.row, pc = player.col;
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      const dist = Math.max(Math.abs(r-pr), Math.abs(c-pc));
+      if (dist <= FOG_VISIBLE_RADIUS) continue;
+      const alpha = dist <= FOG_VISIBLE_RADIUS+1 ? FOG_PARTIAL_ALPHA : FOG_DARK_ALPHA;
+      gfx.fillStyle(0x000000, alpha);
+      gfx.fillRect(c*TILE, HUD_H + r*TILE, TILE, TILE);
+    }
+  }
+}
+
+// ====================== SHRINKING ARENA (visual + host-authoritative damage) ======================
+// bounds = {minR,maxR,minC,maxC}: the inclusive tile range still "safe".
+// Everything outside gets a red danger-zone tint; the host alone decides
+// when it shrinks and who it hurts, clients just render whatever bounds the
+// host broadcasts.
+function createArenaOverlay(scene){
+  return scene.add.graphics().setDepth(850);
+}
+function updateArenaOverlay(gfx, bounds){
+  gfx.clear();
+  if (!bounds) return;
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      if (r >= bounds.minR && r <= bounds.maxR && c >= bounds.minC && c <= bounds.maxC) continue;
+      gfx.fillStyle(0xcc2222, 0.38);
+      gfx.fillRect(c*TILE, HUD_H + r*TILE, TILE, TILE);
+    }
+  }
+}
+// Shrinks the safe zone by one ring on each side, leaving at least a 3x3
+// core so the match always has some playable space left even if the timer
+// runs long. Returns true if it actually shrank (bounds changed).
+function shrinkArenaBounds(bounds){
+  if (bounds.maxR - bounds.minR <= 2 || bounds.maxC - bounds.minC <= 2) return false;
+  bounds.minR++; bounds.maxR--; bounds.minC++; bounds.maxC--;
+  return true;
+}
+
+function buildHUD(scene, numPlayers){
+  scene.add.rectangle(COLS*TILE/2, HUD_H/2, COLS*TILE, HUD_H, 0x15181d);
+  const hudTexts = [];
+  const statsY = 20 * UI_SCALE; // only row left in the HUD bar: per-player stats
+  const slotW = (COLS*TILE) / numPlayers; // even spacing regardless of player count
+  for (let i = 0; i < numPlayers; i++){
+    const x = (12*UI_SCALE) + i*slotW;
+    scene.add.circle(x, statsY, 9*UI_SCALE, PLAYER_COLORS[i]);
+    hudTexts.push(scene.add.text(x+15*UI_SCALE, statsY-8*UI_SCALE, '', { fontSize:Math.round(12*UI_SCALE)+'px', color:'#eee' }));
+  }
+
+  // Match timer: top-right corner of the HUD bar, right-aligned so it grows
+  // toward the left rather than shifting off the edge as digits change.
+  const timerText = scene.add.text(COLS*TILE - 10*UI_SCALE, statsY-8*UI_SCALE, '0:00', { fontSize:Math.round(13*UI_SCALE)+'px', color:'#9fd3ff', fontStyle:'bold' }).setOrigin(1, 0);
+
+  // Win/status message: used to be a permanent second row inside the HUD
+  // bar, taking up board space the entire game even though it's empty
+  // until someone actually wins. It's now a big banner overlaid on the
+  // maze itself (dark strip + bold centered text), created hidden and only
+  // shown once endGame() (or a client snapshot) calls winText.setText(...)
+  // with a real message. `this.winText.setText()` is called from several
+  // places in the file, so this object exposes the same setText() method as
+  // a drop-in replacement for the old Phaser Text object.
+  const bannerY = HUD_H + (ROWS*TILE)/2;
+  const bannerH = Math.round(70 * UI_SCALE);
+  const winBg = scene.add.rectangle(COLS*TILE/2, bannerY, COLS*TILE, bannerH, 0x000000, 0.65).setVisible(false).setDepth(1000);
+  const winLabel = scene.add.text(COLS*TILE/2, bannerY, '', { fontSize:Math.round(34*UI_SCALE)+'px', color:'#fff', fontStyle:'bold' }).setOrigin(0.5).setVisible(false).setDepth(1001);
+  const winText = {
+    setText(msg){
+      winLabel.setText(msg);
+      const show = !!msg;
+      winBg.setVisible(show);
+      winLabel.setVisible(show);
+    }
+  };
+  return { hudTexts, winText, timerText };
+}
+

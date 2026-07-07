@@ -39,10 +39,33 @@ It features real-time network play via WebRTC and an autonomous pathfinding bot 
 
 ---
 
+## Project Structure
+
+The game is split into a small set of static files that all need to stay together in the same folder:
+
+| File | Contents |
+| --- | --- |
+| `index.html` | Page markup, links to `styles.css`, loads the CDN libraries and the JS modules below in order |
+| `styles.css` | All styling for the lobby, HUD, and touch controls |
+| `config.js` | Shared config, map scenarios, RNG/seed helpers, speed settings, power-up drop weights |
+| `audio.js` | Web Audio API sound effects (synthesized, no audio files) |
+| `visuals.js` | Power-up, teleporter, bomb, and explosion graphics |
+| `input.js` | Touch control state and keyboard input helpers |
+| `board.js` | Board/tile drawing, fog of war, shrinking arena, HUD |
+| `bot-ai.js` | Solo-mode bot pathfinding and decision-making |
+| `network.js` | `NetManager` — PeerJS connection handling |
+| `host-scene.js` | `HostScene` — authoritative game logic (the host browser) |
+| `client-scene.js` | `ClientScene` — rendering + input only (non-host browsers) |
+| `lobby.js` | Lobby UI wiring: map/mode pickers, QR join, options |
+
+The JS files are plain (non-module) scripts that share a global scope, so `index.html` loads them in the exact order listed above — later files depend on globals defined earlier.
+
+---
+
 ## How to Run
 
-1. Save the source code into an `index.html` file.
-2. Open the file directly in any modern web browser (requires an active internet connection to contact the public PeerJS signaling server, and to load Phaser/PeerJS/qrcodejs from their CDNs).
+1. Download the full set of files listed above into a single folder (they must sit alongside each other — `index.html` references the rest by relative path).
+2. Open `index.html` directly in any modern web browser (requires an active internet connection to contact the public PeerJS signaling server, and to load Phaser/PeerJS/qrcodejs from their CDNs).
 3. **To play solo:** Select the number of bots and click **Play Solo**. An **Export moves (JSON)** button appears in-game to download a recording of the match once it's over.
 4. **To play multiplayer:** One player clicks **Host Game** and shares the generated room code or QR code. Client players enter the code into the input field (or scan the QR code, which joins automatically) and click **Join Game**. Once all players join, the host clicks **Start Game**.
 5. **Options:** Click **⚙ Options** from the lobby to set map size, game speed, and sound before starting a Solo or Hosted game.
