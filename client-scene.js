@@ -190,7 +190,7 @@ class ClientScene extends Phaser.Scene {
       updateExplosionFlameVisual(ev.gfx, ev.createdAt, time);
     }
     if (NET_FOG_OF_WAR || (NET_DAY_NIGHT_CYCLE && this.isNight)) updateFogOverlay(this.fogGfx, this.players[net.myIndex]);
-    else if (this.fogGfx) this.fogGfx.clear();
+    else if (this.fogGfx){ this.fogGfx.clear(); this.fogGfx._fogLastKey = undefined; }
     const dir = readLocalDirection(this.localKeys);
     const bombPressed = localBombJustPressed(this.localKeys);
     const kickPressed = localKickJustPressed(this.localKeys);

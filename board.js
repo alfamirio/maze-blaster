@@ -350,9 +350,19 @@ function formatMatchTime(ms){
 function createFogOverlay(scene){
   return scene.add.graphics().setDepth(900);
 }
+// The fog only actually needs to change shape when the viewed player steps
+// onto a new tile, but this used to run a full ROWS*COLS clear+refill every
+// single frame regardless (called from each scene's update(), i.e. up to
+// 60x/sec on both the host and every client). Stamping a cache key of the
+// last tile/alive-state we drew for and bailing out when it's unchanged
+// turns that into a no-op the vast majority of frames.
 function updateFogOverlay(gfx, player){
+  const alive = !!(player && player.alive);
+  const key = alive ? (player.row * 100000 + player.col) : -1;
+  if (gfx._fogLastKey === key) return;
+  gfx._fogLastKey = key;
   gfx.clear();
-  if (!player || !player.alive) return; // eliminated/spectating players see the whole board
+  if (!alive) return; // eliminated/spectating players see the whole board
   const pr = player.row, pc = player.col;
   for (let r = 0; r < ROWS; r++){
     for (let c = 0; c < COLS; c++){
@@ -373,7 +383,14 @@ function updateFogOverlay(gfx, player){
 function createArenaOverlay(scene){
   return scene.add.graphics().setDepth(850);
 }
+// Bounds only actually shrink on a slow timer (SHRINK_INTERVAL_MS), but this
+// gets called from update() every frame on the host and every incoming
+// snapshot on clients. Skip the ROWS*COLS clear+refill whenever the bounds
+// are the same rectangle as last time we drew it.
 function updateArenaOverlay(gfx, bounds){
+  const key = bounds ? (bounds.minR+','+bounds.maxR+','+bounds.minC+','+bounds.maxC) : null;
+  if (gfx._arenaLastKey === key) return;
+  gfx._arenaLastKey = key;
   gfx.clear();
   if (!bounds) return;
   for (let r = 0; r < ROWS; r++){

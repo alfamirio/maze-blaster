@@ -751,7 +751,7 @@ class HostScene extends Phaser.Scene {
     }
     const fogActive = this.fogOfWar || (this.dayNightCycle && this.isNight);
     if (fogActive) updateFogOverlay(this.fogGfx, this.players[0]);
-    else if (this.fogGfx) this.fogGfx.clear();
+    else if (this.fogGfx){ this.fogGfx.clear(); this.fogGfx._fogLastKey = undefined; }
 
     if (this._altRPressed){ this._altRPressed = false; this.scene.restart(); this.gameOver=false; return; }
 
