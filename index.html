@@ -151,9 +151,9 @@
     <button id="btn-right">▶</button>
   </div>
   <div id="action-buttons">
-    <button id="btn-bomb">BOMB</button>
+    <button id="btn-detonate">RMT</button>
     <button id="btn-kick">KICK</button>
-    <button id="btn-detonate">REMOTE</button>
+    <button id="btn-bomb">BOMB</button>
   </div>
 </div>
 
@@ -2745,6 +2745,15 @@ net.onStart = data => {
   COLS = data.cols; ROWS = data.rows; SPAWNS = buildSpawns();
   applySpeedSetting(data.speed);
   showGameUI();
+  // The host sends a fresh 'start' message both for the very first match AND
+  // for every subsequent restart (R re-runs HostScene.create(), which calls
+  // net.broadcastStart(...) again). Previously this always spun up a brand
+  // new Phaser.Game on top of whatever was already running, so on restart
+  // the client ended up with a stale, undestroyed game instance still
+  // showing the old map while a new one rendered underneath it. Destroy any
+  // existing instance first so the client always ends up with exactly one
+  // live game, in sync with the host's new map.
+  if (currentGame){ currentGame.destroy(true); currentGame = null; }
   currentGame = new Phaser.Game(makeConfig(ClientScene));
 };
 
