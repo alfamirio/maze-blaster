@@ -64,10 +64,14 @@ function botFirstStepTo(scene, sr, sc, isTarget, avoidSet){
   const startKey = sr * COLS + sc;
   const visited = new Set([startKey]);
   const prev = new Map();
+  // Index cursor instead of Array.shift(): shift() is O(n) per call (it
+  // re-indexes the whole remaining array), which makes a full-board BFS
+  // O(n^2) in the worst case. A cursor into a plain array keeps each pop O(1).
   const queue = [{ r:sr, c:sc }];
+  let head = 0;
   let target = null;
-  while (queue.length){
-    const cur = queue.shift();
+  while (head < queue.length){
+    const cur = queue[head++];
     const curKey = cur.r * COLS + cur.c;
     if (curKey !== startKey && isTarget(cur.r, cur.c)){ target = cur; break; }
     for (const d of BOT_DIRS){
@@ -197,8 +201,9 @@ function botPathIgnoringBlocks(scene, sr, sc, tr, tc){
   const visited = new Set([startKey]);
   const prev = new Map();
   const queue = [{ r:sr, c:sc }];
-  while (queue.length){
-    const cur = queue.shift();
+  let head = 0;
+  while (head < queue.length){
+    const cur = queue[head++];
     if (cur.r*COLS+cur.c === targetKey) break;
     for (const d of BOT_DIRS){
       const nr = cur.r+d.dr, nc = cur.c+d.dc;
@@ -337,7 +342,20 @@ function botDecide(scene, i, time){
   const personality = (scene.botPersonalities && BOT_PERSONALITIES[scene.botPersonalities[i]]) ? scene.botPersonalities[i] : 'classic';
   if (time < mem.nextThink) return { dir: mem.dir, bombPressed: false };
 
-  const danger = computeDangerSet(scene);
+  // Every bot that thinks on the same host tick sees the same board state at
+  // the moment the tick started (bombs a bot places this tick take a frame
+  // to show up for bots that think after it — imperceptible at any of the
+  // FPS caps this game offers, and far cheaper than every bot rescanning
+  // flames/bombs independently). Cached per `time` value, which every bot
+  // is called with the same number for within a single update() tick.
+  let danger;
+  if (scene._dangerCacheTime === time && scene._dangerCache){
+    danger = scene._dangerCache;
+  } else {
+    danger = computeDangerSet(scene);
+    scene._dangerCacheTime = time;
+    scene._dangerCache = danger;
+  }
   const here = p.row * COLS + p.col;
   const dir = { up:false, down:false, left:false, right:false };
   let bombPressed = false;
