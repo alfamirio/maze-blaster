@@ -1268,6 +1268,14 @@ function makePlayers(scene, numPlayers){
 // Formats a duration in milliseconds as "M:SS" (or "MM:SS" past 9:59) for the
 // match timer. Clamped at 0 so a slightly-negative rounding blip (possible in
 // the first frame or two after create()) never flashes a "-0:01".
+// Ping quality indicator: green under ~40ms (great), yellow 40-160ms (typical
+// home wifi — still fine to play on), red above 160ms (noticeably laggy).
+function pingQualityEmoji(ms){
+  if (ms < 40) return '\u{1F7E2}';   // 🟢
+  if (ms <= 160) return '\u{1F7E1}'; // 🟡
+  return '\u{1F534}';                // 🔴
+}
+
 function formatMatchTime(ms){
   const totalSec = Math.max(0, Math.round(ms / 1000));
   const m = Math.floor(totalSec / 60);
@@ -1541,6 +1549,12 @@ class NetManager {
     this.onHostRestored = null; // client: () — fired once auto-reconnect succeeds
     this._reconnecting = false;
     this._lastHostId = null;
+    // Network stats: only the host actively measures latency (it pings each
+    // client and times the reply), then piggybacks the results onto the
+    // state snapshot it's already broadcasting so clients can see everyone's
+    // ping — including their own — without running a second ping loop.
+    this.pingMs = [null, null, null]; // host: latest RTT (ms) per slot 0-2, null until first measurement lands
+    this._pingIntervalId = null;
   }
 
   connectedCount(){ return this.conns.filter(c => !!c).length; }
@@ -1553,6 +1567,14 @@ class NetManager {
     this.conns = [null, null, null];
     this.tokens = [null, null, null];
     this.reconnectDeadline = [0, 0, 0];
+    this.pingMs = [null, null, null];
+    if (this._pingIntervalId) clearInterval(this._pingIntervalId);
+    // Every 2s, ping whichever slots currently have a live connection. Each
+    // client just echoes the timestamp straight back (see the 'ping' branch
+    // below), so this measures true round-trip time over the DataConnection.
+    this._pingIntervalId = setInterval(() => {
+      for (const c of this.conns) if (c && c.open) c.send({ t:'ping', ts: Date.now() });
+    }, 2000);
     this.peer = new Peer();
     this.peer.on('open', id => onReady(id));
     this.peer.on('error', err => onError && onError(err));
@@ -1582,6 +1604,8 @@ class NetManager {
           if (this.onNameUpdate) this.onNameUpdate(idx);
         } else if (data.t === 'input' && this.onInput){
           if (conn._slot != null) this.onInput(conn._slot + 1, data);
+        } else if (data.t === 'pong'){
+          if (conn._slot != null) this.pingMs[conn._slot] = Date.now() - data.ts;
         }
       });
       conn.on('close', () => {
@@ -1621,6 +1645,7 @@ class NetManager {
       if (data.t === 'welcome') this.myIndex = data.index;
       else if (data.t === 'start' && this.onStart){ if (data.names) this.names = data.names; this.onStart(data); }
       else if (data.t === 'state' && this.onState) this.onState(data);
+      else if (data.t === 'ping') conn.send({ t:'pong', ts: data.ts });
     });
     conn.on('close', () => {
       // A connection that was genuinely open and then dropped kicks off (or
@@ -2149,7 +2174,12 @@ class HostScene extends Phaser.Scene {
       const pierceTag = p.pierce ? ' \u{1F4A5}' : '';
       const detonatorTag = p.hasDetonator ? ' \u{1F4E1}' : '';
       const reconnectTag = this.isPendingReconnect(i) ? ' \u23F3' : '';
-      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}` : 'OUT'));
+      // Ping only applies to real network players — solo/bot slots have no
+      // connection to measure — and only once a slot's first ping reply has
+      // actually landed (net.pingMs[i-1] starts out null).
+      const pingVal = (this.controllers[i] === 'remote' && !this.isPendingReconnect(i)) ? net.pingMs[i-1] : null;
+      const pingTag = (pingVal != null) ? ` ${pingQualityEmoji(pingVal)}${pingVal}ms` : '';
+      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}${pingTag}` : 'OUT'));
       this.hudTexts[i].setColor(p.alive ? (this.isPendingReconnect(i) ? '#f5b041' : (p.curse ? '#c39bd3' : '#eee')) : '#666');
       // Dim the sprite itself while frozen/pending so it's clear at a glance
       // on the board, not just in the HUD text.
@@ -2168,6 +2198,7 @@ class HostScene extends Phaser.Scene {
       blocksGrid: this.blocksGridBool,
       powerups: powerupsList,
       elapsed: this.frozenElapsed,
+      pings: net.pingMs.slice(),
       over: this.gameOver ? { winner: (this.players.find(p=>p.alive) || {}).id } : null
     };
   }
@@ -2315,7 +2346,11 @@ class ClientScene extends Phaser.Scene {
       const pierceTag = pd.pierce ? ' \u{1F4A5}' : '';
       const detonatorTag = pd.hasDetonator ? ' \u{1F4E1}' : '';
       const reconnectTag = pd.reconnecting ? ' \u23F3' : '';
-      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}` : 'OUT'));
+      // data.pings is indexed by host slot (player index - 1); player 0 is
+      // always the host itself, which has no connection to measure.
+      const pingVal = (i > 0 && data.pings) ? data.pings[i-1] : null;
+      const pingTag = (pingVal != null && !pd.reconnecting) ? ` ${pingQualityEmoji(pingVal)}${pingVal}ms` : '';
+      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}${pingTag}` : 'OUT'));
       this.hudTexts[i].setColor(pd.alive ? (pd.reconnecting ? '#f5b041' : (pd.cursed ? '#c39bd3' : '#eee')) : '#666');
       if (pd.alive) p.container.setAlpha(pd.reconnecting ? 0.55 : 1);
     });
