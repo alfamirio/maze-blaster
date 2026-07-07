@@ -1799,16 +1799,51 @@ class HostScene extends Phaser.Scene {
     this.recording = null;
     if (NET_IS_SOLO){
       this.recording = {
+        // Bump this whenever the schema below changes shape, so a future
+        // replay engine can detect and reject/adapt to older exports instead
+        // of silently misinterpreting them.
+        schemaVersion: 2,
         startedAt: Date.now(),
+        // ---- Board / match setup (everything needed to rebuild the exact
+        // starting state, with zero reliance on re-rolling any randomness) ----
+        mapSize: SELECTED_MAP_SIZE,
+        speed: SELECTED_SPEED,
         cols: COLS, rows: ROWS, tile: TILE, hudHeight: HUD_H,
         numPlayers: NET_NUM_PLAYERS,
         botCount: NET_BOT_COUNT,
         controllers: this.controllers.slice(), // 'local' | 'bot' per player index
+        playerNames: Array.from({length: NET_NUM_PLAYERS}, (_, i) => playerDisplayName(i)),
         spawns: SPAWNS.slice(0, NET_NUM_PLAYERS),
-        // events: one entry per discrete game event, in chronological order.
-        //   move  -> { t, type:'move',  player, row, col }
-        //   bomb  -> { t, type:'bomb',  player, row, col, range }
-        //   death -> { t, type:'death', player }
+        // Full initial destructible-block layout (row-major bool grid). Blocks
+        // are only ever removed during a match (never added), and every
+        // removal is captured by an 'explode' event below, so this snapshot
+        // plus the event log fully determines the board at any point in time.
+        blocksGrid: this.blocksGridBool.map(row => row.slice()),
+        // Speed-scaled timing constants in effect for this match, captured so
+        // a replay reproduces the same pacing even if defaults change later.
+        timing: {
+          moveInterval: MOVE_INTERVAL, speedStepMs: SPEED_STEP_MS, minMoveInterval: MIN_MOVE_INTERVAL,
+          bombFuse: BOMB_FUSE, flameTime: FLAME_TIME, bombSlideMs: BOMB_SLIDE_MS,
+          curseDuration: CURSE_DURATION, curseAutobombEvery: CURSE_AUTOBOMB_EVERY,
+          curseSlowMult: CURSE_SLOW_MULT, shieldHitIframeMs: SHIELD_HIT_IFRAME_MS, maxShield: MAX_SHIELD,
+        },
+        // events: one entry per discrete game-state-changing event, in
+        // chronological order (t = ms since match start, this.time.now).
+        // Every source of randomness (block-destruction powerup rolls, curse
+        // type picks) is resolved and recorded as its actual outcome here —
+        // nothing about replaying this log should require re-rolling RNG.
+        //   move          -> { t, type, player, row, col }
+        //   bomb          -> { t, type, player, row, col, range }              (normal bomb placed)
+        //   remoteBomb    -> { t, type, player, row, col, range }              (remote bomb armed)
+        //   detonate      -> { t, type, player, row, col }                    (remote bomb manually triggered)
+        //   kick          -> { t, type, player, row, col, dr, dc }            (bomb push/kick initiated; row/col = bomb's tile before the push)
+        //   explode       -> { t, type, player, remote, row, col, range, pierce,
+        //                       destroyed:[{row,col}], powerups:[{row,col,type}] } (bomb detonation: blocks destroyed + any powerups it spawned)
+        //   powerupPickup -> { t, type, player, row, col, powerup }
+        //   curse         -> { t, type, player, curse }
+        //   shieldBreak   -> { t, type, player }
+        //   death         -> { t, type, player }
+        //   gameOver      -> { t, type, winner }
         events: []
       };
     }
@@ -1874,7 +1909,7 @@ class HostScene extends Phaser.Scene {
       // own — see slideBombStep) and the player steps into the tile it
       // just vacated. Without the power-up, a bomb still blocks like a wall.
       if (!p.hasKick) return;
-      if (!this.pushBomb(bombAhead, dr, dc)) return;
+      if (!this.pushBomb(bombAhead, dr, dc, i)) return;
     }
     setPlayerFacing(p, dr, dc);
     p.row = nr; p.col = nc; this.playerMoving[i] = true;
@@ -1901,9 +1936,10 @@ class HostScene extends Phaser.Scene {
   // Kicks off a slide in direction (dr,dc); returns true if the bomb was
   // able to take at least one step. Used both by walking into a bomb
   // (tryMove) and by the explicit Kick key/button (doKick).
-  pushBomb(bomb, dr, dc){
+  pushBomb(bomb, dr, dc, playerId){
     if (bomb.exploded) return false;
     if (!this.canBombEnter(bomb.row + dr, bomb.col + dc)) return false;
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'kick', player: playerId, row:bomb.row, col:bomb.col, dr, dc });
     this.slideBombStep(bomb, dr, dc);
     return true;
   }
@@ -1937,7 +1973,7 @@ class HostScene extends Phaser.Scene {
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
     const bomb = this.bombs[r][c];
     if (!bomb) return;
-    this.pushBomb(bomb, dr, dc);
+    this.pushBomb(bomb, dr, dc, p.id);
   }
 
   // Remote Bomb: a separate bomb type from the stackable normal bombs.
@@ -1948,7 +1984,10 @@ class HostScene extends Phaser.Scene {
   // it detonates it.
   detonate(p){
     if (!p.alive || !p.hasDetonator) return;
-    if (p.remoteBomb) this.explodeBomb(p.remoteBomb);
+    if (p.remoteBomb){
+      if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'detonate', player:p.id, row:p.remoteBomb.row, col:p.remoteBomb.col });
+      this.explodeBomb(p.remoteBomb);
+    }
     else this.placeRemoteBomb(p);
   }
 
@@ -1969,6 +2008,7 @@ class HostScene extends Phaser.Scene {
   checkPowerupPickup(p){
     const pu = this.powerups[p.row][p.col];
     if (!pu) return;
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'powerupPickup', player:p.id, row:p.row, col:p.col, powerup:pu.type });
     if (pu.type === 'bomb') p.maxBombs++;
     else if (pu.type === 'flame') p.blastRange++;
     else if (pu.type === 'speed') p.speed++;
@@ -2030,6 +2070,12 @@ class HostScene extends Phaser.Scene {
       { key:'down',  dr:1,  dc:0  },
     ];
     const armTiles = { up:0, down:0, left:0, right:0 };
+    // Every block this blast destroys, and any powerup that spawns from it,
+    // is logged below (in destroyedBlocks/spawnedPowerups) with its actual
+    // resolved outcome — so a replay never needs to re-roll this randomness,
+    // it just applies the same recorded result.
+    const destroyedBlocks = [];
+    const spawnedPowerups = [];
     for (const d of dirs){
       for (let i = 1; i <= bomb.range; i++){
         const r = bomb.row + d.dr*i, c = bomb.col + d.dc*i;
@@ -2041,6 +2087,7 @@ class HostScene extends Phaser.Scene {
           this.blocks[r][c].destroy();
           this.blocks[r][c] = null;
           this.blocksGridBool[r][c] = false;
+          destroyedBlocks.push({ row:r, col:c });
           if (Math.random() < 0.35){
             const roll = Math.random();
             const type = roll < 0.15 ? 'bomb'
@@ -2053,6 +2100,7 @@ class HostScene extends Phaser.Scene {
                        : 'curse';
             const px = c*TILE+TILE/2, py = HUD_H+r*TILE+TILE/2;
             this.powerups[r][c] = { type, gfx: createPowerupVisual(this, px, py, type) };
+            spawnedPowerups.push({ row:r, col:c, type });
           }
           // Pierce Bomb: the blast punches through the block it just
           // destroyed and keeps going, instead of stopping here like a
@@ -2064,6 +2112,14 @@ class HostScene extends Phaser.Scene {
           if (!bomb.pierce) break;
         }
       }
+    }
+    if (this.recording){
+      this.recording.events.push({
+        t: Math.round(this.time.now), type:'explode',
+        player: bomb.owner ? bomb.owner.id : null, remote: !!bomb.remote,
+        row: bomb.row, col: bomb.col, range: bomb.range, pierce: !!bomb.pierce,
+        destroyed: destroyedBlocks, powerups: spawnedPowerups,
+      });
     }
     const now = this.time.now;
     for (const cell of cells) this.flames.push({ r:cell.r, c:cell.c, expire: now+FLAME_TIME });
