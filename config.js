@@ -23,10 +23,12 @@
 
 // ====================== SHARED CONFIG ======================
 // Board is rendered at native resolution (not stretched up from a small
-// buffer via Phaser's `resolution` config). TILE is chosen so that on the
-// default map size, ROWS*TILE+HUD_H lands close to 2160px tall — matching
-// 4K UHD's vertical pixel count for a native, non-upscaled canvas.
-const TILE = 185;
+// buffer via Phaser's `resolution` config, which is now pinned to 1 — see
+// makeConfig() in lobby.js). TILE is chosen so that on the default map
+// size, ROWS*TILE+HUD_H comfortably fits within a 1080p-class screen
+// (1920x1080 laptop, or a 1080-wide phone) without the canvas backing
+// buffer being larger than the display can actually show.
+const TILE = 86;
 // COLS/ROWS are mutable (not const) so the Options menu's map-size choice
 // can resize the board before a game starts. Everything else in the file
 // already reads these as variables rather than hardcoding 15/11, so
@@ -37,7 +39,11 @@ let ROWS = 11;
 // HUD_H only needs to cover a single per-player stats row; the win/status
 // message shows as a big overlay banner on top of the maze itself instead
 // (see buildHUD), so the rest of the canvas height goes straight to the maze.
-const HUD_H = 120;
+// Expressed as a multiple of TILE/48 (the same ratio UI_SCALE uses) rather
+// than a flat pixel value, so it shrinks/grows along with TILE instead of
+// eating a disproportionate chunk of a smaller board (at the old TILE=185
+// this formula still lands on the same ~120px as before).
+const HUD_H = 56;
 const MAP_SIZES = {
   vsmall:  { cols:11, rows:7  },
   small:   { cols:13, rows:9  },

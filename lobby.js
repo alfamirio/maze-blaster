@@ -85,17 +85,19 @@ function makeConfig(SceneClass){
   // preserving aspect ratio, so the board looks right on a wide 16:9 laptop
   // screen and a narrow 20:9 phone screen alike.
   //
-  // The board is natively sized close to 4K height (see TILE/HUD_H above:
-  // on the default map size, COLS*TILE x ROWS*TILE+HUD_H = 2775x2155), so on
-  // a 4K display the canvas renders close to 1:1 with no upscaling blur.
-  // `resolution` here only needs to cover devicePixelRatio, for sharpness on
-  // retina/high-DPI screens beyond that.
+  // `resolution` is pinned to 1 (not window.devicePixelRatio) on purpose:
+  // TILE is now tuned for a 1080p-class logical canvas (see config.js), and
+  // multiplying that by devicePixelRatio (2-3 on most phones) would make the
+  // backing buffer several times larger than the screen can actually show —
+  // pure wasted fill-rate with no visible sharpness benefit for a flat-shaded
+  // arcade board like this one. Scale.FIT still upscales via CSS to fill
+  // whatever screen it's on; this only controls the canvas's own buffer size.
   return {
     type: Phaser.AUTO,
     parent: 'game',
     backgroundColor: '#111',
     scene: SceneClass,
-    resolution: window.devicePixelRatio || 1,
+    resolution: 1,
     render: { roundPixels: true },
     scale: {
       mode: Phaser.Scale.FIT,
