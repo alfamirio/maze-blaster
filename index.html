@@ -37,6 +37,8 @@
   #game { flex:1 1 auto; width:100%; min-height:0; overflow:hidden; position:relative; }
   #game canvas { max-width:100%; max-height:100%; }
   #hint { flex:0 0 auto; text-align:center; color:#aaa; font-size:12px; margin:8px 0; }
+  #reconnect-banner { position:fixed; top:0; left:0; right:0; z-index:50; text-align:center; padding:10px; font-size:14px; font-weight:bold; background:#c0392b; color:#fff; }
+  #reconnect-banner.hidden { display:none; }
 
   #touch-controls { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:space-between; align-items:flex-end; padding:14px 18px; box-sizing:border-box; pointer-events:none; }
   #touch-controls button { pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none; border:none; border-radius:50%; background:rgba(255,255,255,0.14); color:#fff; font-size:20px; width:52px; height:52px; }
@@ -128,6 +130,7 @@
   </div>
 </div>
 
+<div id="reconnect-banner" class="hidden">⚠️ Connection to host lost — reconnecting…</div>
 <div id="game-wrap" class="hidden">
   <div id="game"></div>
   <div id="hint">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Kick: K &nbsp;|&nbsp; Remote Bomb: F (place / detonate) &nbsp;|&nbsp; Host presses R to restart</div>
@@ -1503,72 +1506,178 @@ class NetManager {
     this.peer = null;
     this.isHost = false;
     this.myIndex = 0;
-    this.conns = [];       // host: DataConnections, array index i => player index i+1
+    this.myToken = null;    // client: this browser's persistent reconnect token
+    // Host keeps fixed 3-slot bookkeeping (slot i => player index i+1) instead
+    // of an append-only list, so a returning player can be matched back to
+    // their original slot by token rather than always taking a fresh one.
+    this.conns = [null, null, null];         // host: live DataConnection per slot (or null)
+    this.tokens = [null, null, null];        // host: the token that "owns" each slot once claimed
+    this.reconnectDeadline = [0, 0, 0];      // host: wall-clock ms deadline while a slot's conn is down (0 = not pending)
+    this.RECONNECT_GRACE_MS = 20000;
     this.hostConn = null;  // client: connection to host
     this.names = [null, null, null, null]; // display name per player index (null = use default P1/P2/...)
     this.onPlayerJoined = null;
+    this.onReconnect = null; // host: (playerIndex) — fired when a previously-dropped slot returns
     this.onNameUpdate = null; // host: (playerIndex) — fired when a client's name arrives/changes
     this.onDisconnect = null;
     this.onInput = null;   // host: (playerIndex, data)
     this.onStart = null;   // client: (data)
     this.onState = null;   // client: (data)
+    this.onHostLost = null;     // client: () — fired when the connection to the host drops unexpectedly
+    this.onHostRestored = null; // client: () — fired once auto-reconnect succeeds
+    this._reconnecting = false;
+    this._lastHostId = null;
   }
+
+  connectedCount(){ return this.conns.filter(c => !!c).length; }
 
   hostGame(onReady, onError){
     this.isHost = true;
     this.myIndex = 0;
     this.names = [null, null, null, null];
     this.names[0] = (typeof PLAYER_NAME !== 'undefined' && PLAYER_NAME) ? PLAYER_NAME : null;
+    this.conns = [null, null, null];
+    this.tokens = [null, null, null];
+    this.reconnectDeadline = [0, 0, 0];
     this.peer = new Peer();
     this.peer.on('open', id => onReady(id));
     this.peer.on('error', err => onError && onError(err));
     this.peer.on('connection', conn => {
-      const idx = this.conns.length + 1;
-      if (idx > 3){ conn.close(); return; } // max 4 players (0-3)
-      this.conns.push(conn);
-      conn.on('open', () => {
-        conn.send({ t:'welcome', index: idx });
-        if (this.onPlayerJoined) this.onPlayerJoined(idx);
-      });
       conn.on('data', data => {
-        if (data.t === 'input' && this.onInput) this.onInput(idx, data);
-        else if (data.t === 'join'){
+        if (data.t === 'join'){
+          // Seat this connection by token: a token already on file means a
+          // previously-dropped player reclaiming their old slot rather than
+          // a brand-new arrival taking the next open one.
+          const token = data.token;
+          let slot = token ? this.tokens.findIndex(t => t === token) : -1;
+          const isReconnect = slot !== -1;
+          if (!isReconnect){
+            slot = this.tokens.findIndex(t => t === null);
+            if (slot === -1){ conn.close(); return; } // room full (max 3 clients)
+            this.tokens[slot] = token || null;
+          }
+          conn._slot = slot;
+          this.conns[slot] = conn;
+          this.reconnectDeadline[slot] = 0;
+          const idx = slot + 1;
           const nm = data.name && String(data.name).trim();
-          this.names[idx] = nm ? nm.slice(0, 16) : null;
+          this.names[idx] = nm ? nm.slice(0, 16) : (this.names[idx] || null);
+          conn.send({ t:'welcome', index: idx });
+          if (isReconnect){ if (this.onReconnect) this.onReconnect(idx); }
+          else if (this.onPlayerJoined) this.onPlayerJoined(idx);
           if (this.onNameUpdate) this.onNameUpdate(idx);
+        } else if (data.t === 'input' && this.onInput){
+          if (conn._slot != null) this.onInput(conn._slot + 1, data);
         }
       });
-      conn.on('close', () => { if (this.onDisconnect) this.onDisconnect(idx); });
+      conn.on('close', () => {
+        const slot = conn._slot;
+        if (slot == null) return;
+        if (this.conns[slot] === conn) this.conns[slot] = null;
+        // Don't eliminate them yet — give them a grace window to reconnect
+        // (same token) before treating the slot as truly abandoned.
+        this.reconnectDeadline[slot] = Date.now() + this.RECONNECT_GRACE_MS;
+        if (this.onDisconnect) this.onDisconnect(slot + 1);
+      });
     });
   }
 
   joinGame(hostId, onReady, onError){
     this.isHost = false;
+    this._lastHostId = hostId;
     this.peer = new Peer();
     this.peer.on('error', err => onError && onError(err));
-    this.peer.on('open', () => {
-      const conn = this.peer.connect(hostId, { reliable: true });
-      this.hostConn = conn;
-      conn.on('open', () => {
-        const nm = (typeof PLAYER_NAME !== 'undefined' && PLAYER_NAME) ? PLAYER_NAME : null;
-        conn.send({ t:'join', name: nm });
-        onReady();
-      });
-      conn.on('data', data => {
-        if (data.t === 'welcome') this.myIndex = data.index;
-        else if (data.t === 'start' && this.onStart){ if (data.names) this.names = data.names; this.onStart(data); }
-        else if (data.t === 'state' && this.onState) this.onState(data);
-      });
-      conn.on('error', err => onError && onError(err));
+    this.peer.on('open', () => this._connectToHost(hostId, onReady, onError));
+  }
+
+  _connectToHost(hostId, onReady, onError, isRetryAttempt){
+    const conn = this.peer.connect(hostId, { reliable: true });
+    this.hostConn = conn;
+    let settled = false; // true once this attempt actually opens
+    conn.on('open', () => {
+      settled = true;
+      const nm = (typeof PLAYER_NAME !== 'undefined' && PLAYER_NAME) ? PLAYER_NAME : null;
+      conn.send({ t:'join', name: nm, token: this.myToken });
+      const wasReconnecting = this._reconnecting;
+      this._reconnecting = false;
+      if (wasReconnecting && this.onHostRestored) this.onHostRestored();
+      onReady();
+    });
+    conn.on('data', data => {
+      if (data.t === 'welcome') this.myIndex = data.index;
+      else if (data.t === 'start' && this.onStart){ if (data.names) this.names = data.names; this.onStart(data); }
+      else if (data.t === 'state' && this.onState) this.onState(data);
+    });
+    conn.on('close', () => {
+      // A connection that was genuinely open and then dropped kicks off (or
+      // continues) the auto-reconnect loop. A retry attempt that never even
+      // managed to open just needs to try again — reported straight back to
+      // whoever's driving the retry loop, not through _handleHostDrop (which
+      // would otherwise no-op since we're already mid-retry and stall it).
+      if (settled) this._handleHostDrop(onError);
+      else if (isRetryAttempt && onError) onError(new Error('connection closed before opening'));
+    });
+    conn.on('error', err => {
+      if (settled) return; // 'close' already covers the genuinely-open case
+      if (onError) onError(err);
     });
   }
 
-  broadcastStart(payload){ for (const c of this.conns) c.send(Object.assign({ t:'start', names: this.names.slice() }, payload)); }
-  broadcastState(payload){ for (const c of this.conns) c.send(Object.assign({ t:'state' }, payload)); }
+  // Fired when the DataConnection to the host closes mid-game (e.g. a wifi
+  // blip). Rather than surfacing this as a fatal error, quietly retries the
+  // connection for a while — matching the host's own reconnect grace period
+  // — using the same persistent token so the host seats us back in our old
+  // slot instead of treating us as a new player.
+  _handleHostDrop(onError){
+    if (this._reconnecting) return; // already retrying
+    if (this.myIndex === 0) return; // hosts don't join themselves
+    this._reconnecting = true;
+    if (this.onHostLost) this.onHostLost();
+    this._retryReconnect(0, onError);
+  }
+
+  _retryReconnect(attempt, onError){
+    if (!this._reconnecting) return; // reconnect already succeeded elsewhere
+    if (attempt >= 10){ // ~20s of retries, matching RECONNECT_GRACE_MS
+      this._reconnecting = false;
+      if (this.onHostLost) this.onHostLost('failed');
+      return;
+    }
+    setTimeout(() => {
+      if (!this._reconnecting) return;
+      const retryAgain = () => this._retryReconnect(attempt + 1, onError);
+      try {
+        if (this.peer && !this.peer.destroyed && this.peer.open){
+          this._connectToHost(this._lastHostId, () => {}, retryAgain, true);
+        } else {
+          this.peer = new Peer();
+          this.peer.on('open', () => this._connectToHost(this._lastHostId, () => {}, retryAgain, true));
+          this.peer.on('error', retryAgain);
+        }
+      } catch (e){ retryAgain(); }
+    }, 2000);
+  }
+
+  broadcastStart(payload){ for (const c of this.conns) if (c) c.send(Object.assign({ t:'start', names: this.names.slice() }, payload)); }
+  broadcastState(payload){ for (const c of this.conns) if (c) c.send(Object.assign({ t:'state' }, payload)); }
   sendInput(data){ if (this.hostConn) this.hostConn.send(Object.assign({ t:'input' }, data)); }
 }
 
 const net = new NetManager();
+// A persistent per-browser id so that if this tab's connection to the host
+// drops and reconnects, the host recognizes it as the same returning player
+// instead of a brand-new one. Survives page reloads (but is unique enough
+// that joining an unrelated game later is never mistaken for a reconnect).
+(function initReconnectToken(){
+  const KEY = 'mb_reconnect_token';
+  let t;
+  try { t = localStorage.getItem(KEY); } catch (e){ t = null; }
+  if (!t){
+    t = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { localStorage.setItem(KEY, t); } catch (e){ /* ignore (private browsing etc.) */ }
+  }
+  net.myToken = t;
+})();
 // Returns a player's custom display name if one was set (host, in-game
 // broadcast to all clients), otherwise the default 'P1'/'P2'/etc label.
 function playerDisplayName(i){
@@ -1669,7 +1778,12 @@ class HostScene extends Phaser.Scene {
       if (data.kickPressed) this.remoteKickQueue[idx] = (this.remoteKickQueue[idx] || 0) + 1;
       if (data.detonatePressed) this.remoteDetonateQueue[idx] = (this.remoteDetonateQueue[idx] || 0) + 1;
     };
-    net.onDisconnect = (idx) => { const p = this.players[idx]; if (p && p.alive) this.killPlayer(p); };
+    net.onDisconnect = (idx) => {
+      // Don't eliminate immediately — just stop reacting to their stale last
+      // input so they freeze in place rather than sliding/bombing on their
+      // own while we wait out the reconnect grace period (see net.reconnectDeadline).
+      this.remoteInput[idx] = { up:false, down:false, left:false, right:false };
+    };
 
     this.localKeys = makeLocalKeys(this);
     this.keyR = this.input.keyboard.addKey('R');
@@ -1996,6 +2110,12 @@ class HostScene extends Phaser.Scene {
     URL.revokeObjectURL(url);
   }
 
+  // True while a networked player's connection is down but still inside its
+  // reconnect grace window (see net.reconnectDeadline / net.RECONNECT_GRACE_MS).
+  isPendingReconnect(i){
+    return this.controllers[i] === 'remote' && net.reconnectDeadline[i-1] > 0;
+  }
+
   updateHUD(){
     for (let i = 0; i < NET_NUM_PLAYERS; i++){
       const p = this.players[i];
@@ -2005,8 +2125,12 @@ class HostScene extends Phaser.Scene {
       const shieldTag = p.shieldCount > 0 ? ` \u{1F6E1}${p.shieldCount}` : '';
       const pierceTag = p.pierce ? ' \u{1F4A5}' : '';
       const detonatorTag = p.hasDetonator ? ' \u{1F4E1}' : '';
-      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}` : 'OUT'));
-      this.hudTexts[i].setColor(p.alive ? (p.curse ? '#c39bd3' : '#eee') : '#666');
+      const reconnectTag = this.isPendingReconnect(i) ? ' \u23F3' : '';
+      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}` : 'OUT'));
+      this.hudTexts[i].setColor(p.alive ? (this.isPendingReconnect(i) ? '#f5b041' : (p.curse ? '#c39bd3' : '#eee')) : '#666');
+      // Dim the sprite itself while frozen/pending so it's clear at a glance
+      // on the board, not just in the HUD text.
+      p.container.setAlpha(p.alive ? (this.isPendingReconnect(i) ? 0.55 : 1) : 0.55);
     }
   }
 
@@ -2015,7 +2139,7 @@ class HostScene extends Phaser.Scene {
     const powerupsList = [];
     for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if (this.powerups[r][c]) powerupsList.push({row:r,col:c,type:this.powerups[r][c].type});
     return {
-      players: this.players.map(p => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse, hasKick:!!p.hasKick, shieldCount:p.shieldCount||0, pierce:!!p.pierce, hasDetonator:!!p.hasDetonator })),
+      players: this.players.map((p,i) => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse, hasKick:!!p.hasKick, shieldCount:p.shieldCount||0, pierce:!!p.pierce, hasDetonator:!!p.hasDetonator, reconnecting:this.isPendingReconnect(i) })),
       bombs: bombsList,
       explosions: this.explosionVisuals.map(ev => ({ row:ev.row, col:ev.col, up:ev.arm.up, down:ev.arm.down, left:ev.arm.left, right:ev.arm.right })),
       blocksGrid: this.blocksGridBool,
@@ -2025,6 +2149,20 @@ class HostScene extends Phaser.Scene {
   }
 
   update(time){
+    // A dropped remote player's grace window is tracked in wall-clock time
+    // (net.reconnectDeadline) since it's set from a PeerJS event outside the
+    // Phaser clock. Once it lapses without them coming back, eliminate them
+    // for real so the match can still resolve.
+    for (let i = 1; i < NET_NUM_PLAYERS; i++){
+      if (this.controllers[i] !== 'remote') continue;
+      const slot = i - 1;
+      const deadline = net.reconnectDeadline[slot];
+      if (deadline && Date.now() > deadline){
+        net.reconnectDeadline[slot] = 0;
+        const p = this.players[i];
+        if (p && p.alive) this.killPlayer(p);
+      }
+    }
     this.updateHUD();
     this.checkFlameDamage(time);
     for (const bomb of this.activeBombs) updateBombVisual(bomb.gfx, bomb.placedAt, time);
@@ -2140,8 +2278,10 @@ class ClientScene extends Phaser.Scene {
       const shieldTag = pd.shieldCount > 0 ? ` \u{1F6E1}${pd.shieldCount}` : '';
       const pierceTag = pd.pierce ? ' \u{1F4A5}' : '';
       const detonatorTag = pd.hasDetonator ? ' \u{1F4E1}' : '';
-      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}` : 'OUT'));
-      this.hudTexts[i].setColor(pd.alive ? (pd.cursed ? '#c39bd3' : '#eee') : '#666');
+      const reconnectTag = pd.reconnecting ? ' \u23F3' : '';
+      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}` : 'OUT'));
+      this.hudTexts[i].setColor(pd.alive ? (pd.reconnecting ? '#f5b041' : (pd.cursed ? '#c39bd3' : '#eee')) : '#666');
+      if (pd.alive) p.container.setAlpha(pd.reconnecting ? 0.55 : 1);
     });
 
     for (let r=0;r<ROWS;r++){
@@ -2352,8 +2492,37 @@ function escapeHtml(s){
 }
 function refreshPlayerList(){
   let html = `<div>${escapeHtml(playerDisplayName(0))} (you, host)</div>`;
-  for (let i=0;i<net.conns.length;i++) html += `<div>${escapeHtml(playerDisplayName(i+1))} connected</div>`;
+  // Walk each of the 3 fixed host slots directly (rather than assuming the
+  // first `connectedCount()` indices are the connected ones) since a slot in
+  // the middle can go empty on disconnect while a later slot stays filled.
+  for (let slot=0; slot<3; slot++){
+    const claimed = net.conns[slot] || net.tokens[slot] !== null;
+    if (!claimed) continue; // nobody has ever occupied this slot
+    const idx = slot + 1;
+    const name = escapeHtml(playerDisplayName(idx));
+    if (net.conns[slot]){
+      html += `<div>${name} connected</div>`;
+    } else if (net.reconnectDeadline[slot] && Date.now() < net.reconnectDeadline[slot]){
+      html += `<div style="color:#f5b041">${name} disconnected — waiting to reconnect…</div>`;
+    } else {
+      html += `<div style="color:#888">${name} left the game</div>`;
+    }
+  }
   document.getElementById('player-list').innerHTML = html;
+}
+
+// While the lobby is showing (room created, match not started yet), the only
+// events that trigger a refresh are join/reconnect/name-update — a slot's
+// grace period silently expiring wouldn't otherwise flip the "waiting to
+// reconnect" text over to "left the game". Poll while the lobby is visible so
+// that transition still shows up without needing its own dedicated event.
+let lobbyPollTimer = null;
+function startLobbyPoll(){
+  stopLobbyPoll();
+  lobbyPollTimer = setInterval(refreshPlayerList, 1000);
+}
+function stopLobbyPoll(){
+  if (lobbyPollTimer){ clearInterval(lobbyPollTimer); lobbyPollTimer = null; }
 }
 
 // ====================== QR JOIN ======================
@@ -2440,11 +2609,17 @@ document.getElementById('btn-host').onclick = () => {
       document.getElementById('btn-start').classList.remove('hidden');
       showJoinQR(id);
       refreshPlayerList();
+      startLobbyPoll();
     },
     err => { document.getElementById('lobby-msg').textContent = 'Error: ' + (err.message || err); }
   );
-  net.onPlayerJoined = () => { NET_NUM_PLAYERS = net.conns.length + 1; refreshPlayerList(); };
+  net.onPlayerJoined = () => { NET_NUM_PLAYERS = net.connectedCount() + 1; refreshPlayerList(); };
   net.onNameUpdate = () => refreshPlayerList();
+  // These previously weren't wired up at all during the lobby, so a player
+  // who dropped before the host hit Start just silently vanished from the
+  // list instead of showing as disconnected/reconnecting.
+  net.onDisconnect = () => refreshPlayerList();
+  net.onReconnect = () => refreshPlayerList();
 };
 
 document.getElementById('btn-copy').onclick = () => {
@@ -2453,6 +2628,7 @@ document.getElementById('btn-copy').onclick = () => {
 };
 
 document.getElementById('btn-start').onclick = () => {
+  stopLobbyPoll(); // HostScene takes over net.onDisconnect/onReconnect from here
   applyMapSize(SELECTED_MAP_SIZE);
   applySpeedSetting(SELECTED_SPEED);
   showGameUI();
@@ -2470,6 +2646,26 @@ net.onStart = data => {
   applySpeedSetting(data.speed);
   showGameUI();
   currentGame = new Phaser.Game(makeConfig(ClientScene));
+};
+
+// If our connection to the host drops mid-match (e.g. a brief wifi blip),
+// NetManager quietly retries in the background using the same reconnect
+// token so the host seats us back in our old slot. Surface that as a small
+// banner rather than a fatal error, since the running ClientScene itself
+// needs no changes — it just resumes rendering as soon as state messages
+// start arriving again.
+net.onHostLost = (result) => {
+  const banner = document.getElementById('reconnect-banner');
+  if (result === 'failed'){
+    banner.textContent = '⚠️ Could not reconnect to host — please refresh to try again.';
+    banner.classList.remove('hidden');
+  } else {
+    banner.textContent = '⚠️ Connection to host lost — reconnecting…';
+    banner.classList.remove('hidden');
+  }
+};
+net.onHostRestored = () => {
+  document.getElementById('reconnect-banner').classList.add('hidden');
 };
 
 tryAutoJoinFromUrl();
