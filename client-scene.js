@@ -78,6 +78,13 @@ class ClientScene extends Phaser.Scene {
       p.hasKick = !!pd.hasKick; p.shieldCount = pd.shieldCount||0;
       p.pierce = !!pd.pierce; p.hasDetonator = !!pd.hasDetonator; p.hasMine = !!pd.hasMine; p.mineArmed = !!pd.mineArmed;
       updateShieldRingVisual(p);
+      // Shrinking Arena grace countdown: the host tells us how many ms are
+      // left before this player takes a hit (or null if they're safe / the
+      // scenario is off). Stamped with our own clock on arrival so update()
+      // can keep counting it down smoothly between snapshots instead of
+      // only updating once every ~80ms.
+      p.arenaWarnMs = (typeof pd.arenaWarnMs === 'number') ? pd.arenaWarnMs : null;
+      p.arenaWarnAt = this.time.now;
       // data.pings is indexed by host slot (player index - 1); player 0 is
       // always the host itself, which has no connection to measure.
       const pingVal = (i > 0 && data.pings) ? data.pings[i-1] : null;
@@ -164,6 +171,17 @@ class ClientScene extends Phaser.Scene {
 
   update(time, delta){
     for (const p of this.players) updateCurseRingVisual(p, time);
+    if (NET_SHRINKING_ARENA){
+      for (const p of this.players){
+        if (p.arenaWarnMs == null){ updateArenaWarningVisual(p, null, time); continue; }
+        // Keep counting down locally between snapshots (they only arrive
+        // ~every 80ms) so the ring pulse and number both read smoothly
+        // instead of stepping once per network update.
+        const elapsedSinceSync = time - (p.arenaWarnAt || time);
+        const remaining = Math.max(0, p.arenaWarnMs - elapsedSinceSync);
+        updateArenaWarningVisual(p, remaining, time);
+      }
+    }
     for (const key in this.bombGfxMap){
       updateBombVisual(this.bombGfxMap[key], this.bombPlacedMap[key], time);
     }

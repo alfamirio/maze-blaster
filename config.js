@@ -166,6 +166,12 @@ const FOG_DARK_ALPHA = 1;
 // straying back out after a shield pops still hurts.
 const SHRINK_GRACE_MS = 14000;
 const SHRINK_INTERVAL_MS = 9000;
+// How long a player can stand outside the current safe zone before the
+// arena actually starts hurting them. Gives a beat to scramble back in
+// rather than being punished the instant a shrink catches them out — a
+// pulsing ring + on-screen countdown (see updateArenaWarningVisual in
+// board.js) warns them the whole time this is ticking down.
+const ARENA_GRACE_MS = 5000;
 
 // Day/Night Cycle scenario: alternates between a normal "day" phase (no fog)
 // and a "night" phase (same fog-of-war visuals as the Fog of War scenario)

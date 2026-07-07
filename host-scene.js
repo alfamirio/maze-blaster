@@ -670,7 +670,7 @@ class HostScene extends Phaser.Scene {
     const powerupsList = [];
     for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if (this.powerups[r][c]) powerupsList.push({row:r,col:c,type:this.powerups[r][c].type});
     return {
-      players: this.players.map((p,i) => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse, hasKick:!!p.hasKick, shieldCount:p.shieldCount||0, pierce:!!p.pierce, hasDetonator:!!p.hasDetonator, hasMine:!!p.hasMine, mineArmed:!!p.activeMine, reconnecting:this.isPendingReconnect(i) })),
+      players: this.players.map((p,i) => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse, hasKick:!!p.hasKick, shieldCount:p.shieldCount||0, pierce:!!p.pierce, hasDetonator:!!p.hasDetonator, hasMine:!!p.hasMine, mineArmed:!!p.activeMine, reconnecting:this.isPendingReconnect(i), arenaWarnMs: (this.shrinkingArena && p.arenaOutsideSince) ? Math.max(0, ARENA_GRACE_MS - (this.time.now - p.arenaOutsideSince)) : null })),
       bombs: bombsList,
       explosions: this.explosionVisuals.map(ev => ({ row:ev.row, col:ev.col, up:ev.arm.up, down:ev.arm.down, left:ev.arm.left, right:ev.arm.right })),
       blocksGrid: this.blocksGridBool,
@@ -712,9 +712,25 @@ class HostScene extends Phaser.Scene {
       }
       const b = this.arenaBounds;
       for (const p of this.players){
-        if (!p.alive) continue;
-        if (p.invulnerableUntil && time < p.invulnerableUntil) continue;
-        if (p.row < b.minR || p.row > b.maxR || p.col < b.minC || p.col > b.maxC) this.hitPlayer(p, time);
+        if (!p.alive){ p.arenaOutsideSince = 0; updateArenaWarningVisual(p, null, time); continue; }
+        const outside = (p.row < b.minR || p.row > b.maxR || p.col < b.minC || p.col > b.maxC);
+        if (outside){
+          // Start (or keep running) this player's grace window the moment
+          // they're caught outside the safe zone — they only actually take
+          // a hit once the whole window has elapsed, giving them a chance
+          // to dash back in first instead of dying the instant a shrink
+          // catches them.
+          if (!p.arenaOutsideSince) p.arenaOutsideSince = time;
+          const remaining = ARENA_GRACE_MS - (time - p.arenaOutsideSince);
+          if (remaining <= 0){
+            if (!(p.invulnerableUntil && time < p.invulnerableUntil)) this.hitPlayer(p, time);
+            p.arenaOutsideSince = time; // still outside: restart the window for the next hit
+          }
+          updateArenaWarningVisual(p, Math.max(0, remaining), time);
+        } else {
+          p.arenaOutsideSince = 0;
+          updateArenaWarningVisual(p, null, time);
+        }
       }
       updateArenaOverlay(this.arenaGfx, this.arenaBounds);
     }

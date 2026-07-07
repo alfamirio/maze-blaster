@@ -270,12 +270,22 @@ function makePlayers(scene, numPlayers){
     const shieldRing = scene.add.circle(0, 0, TILE*0.46, 0x000000, 0)
       .setStrokeStyle(Math.max(2, Math.round(3*UI_SCALE)), 0xff5da2, 1)
       .setVisible(false);
+    // Arena-warning ring: sits just outside the shield ring, invisible until
+    // the Shrinking Arena scenario catches this player outside the safe
+    // zone, then flashes red for the grace period before it actually hurts
+    // them (see updateArenaWarningVisual below).
+    const arenaWarnRing = scene.add.circle(0, 0, TILE*0.52, 0x000000, 0)
+      .setStrokeStyle(Math.max(2, Math.round(4*UI_SCALE)), 0xff3b30, 1)
+      .setVisible(false);
     const eyeRad = Math.max(1.5, TILE*0.045);
     const eyeL = scene.add.circle(0, 0, eyeRad, 0x161616);
     const eyeR = scene.add.circle(0, 0, eyeRad, 0x161616);
     const label = scene.add.text(0, -TILE*0.55, playerDisplayName(i), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
-    container.add([shadow, body, curseRing, shieldRing, eyeL, eyeR, label]);
-    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, hasKick:false, shieldCount:0, pierce:false, hasDetonator:false, remoteBomb:null, hasMine:false, activeMine:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc };
+    // Countdown number shown above the player's name while the arena-warning
+    // ring is active (e.g. "5", "4", "3"...).
+    const arenaWarnText = scene.add.text(0, -TILE*0.85, '', { fontSize:Math.round(20*UI_SCALE)+'px', color:'#ff3b30', fontStyle:'bold' }).setOrigin(0.5).setVisible(false);
+    container.add([shadow, body, curseRing, shieldRing, arenaWarnRing, eyeL, eyeR, label, arenaWarnText]);
+    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, arenaWarnRing, arenaWarnText, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, hasKick:false, shieldCount:0, pierce:false, hasDetonator:false, remoteBomb:null, hasMine:false, activeMine:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc, arenaOutsideSince:0, arenaWarnMs:null, arenaWarnAt:0 };
     positionPlayerEyes(player);
     players.push(player);
   }
@@ -381,6 +391,28 @@ function shrinkArenaBounds(bounds){
   if (bounds.maxR - bounds.minR <= 2 || bounds.maxC - bounds.minC <= 2) return false;
   bounds.minR++; bounds.maxR--; bounds.minC++; bounds.maxC--;
   return true;
+}
+// Per-player "you're outside the safe zone" warning: a flashing red ring
+// plus a whole-seconds countdown overhead, shown for as long as
+// remainingMs is non-null. Pass null to hide it (back inside, dead, or the
+// scenario isn't active). Pulse speed ramps up as remainingMs shrinks, so
+// the last second or so reads as an urgent, fast flash rather than the same
+// lazy pulse the whole way down. Works identically on the host's own view
+// (driven by the real countdown) and every client's view (driven by the
+// remaining time synced in from the state snapshot).
+function updateArenaWarningVisual(p, remainingMs, time){
+  if (remainingMs == null){
+    p.arenaWarnRing.setVisible(false);
+    p.arenaWarnText.setVisible(false);
+    return;
+  }
+  p.arenaWarnRing.setVisible(true);
+  p.arenaWarnText.setVisible(true);
+  p.arenaWarnText.setText(String(Math.max(1, Math.ceil(remainingMs / 1000))));
+  const urgency = 1 - Math.min(1, remainingMs / ARENA_GRACE_MS); // 0 (just stepped out) -> 1 (about to be hit)
+  const pulsePeriod = 130 - urgency*90; // slows to a fast ~40ms-period flash near the end
+  const pulse = 0.35 + 0.65*((Math.sin(time/Math.max(35,pulsePeriod))+1)/2);
+  p.arenaWarnRing.setStrokeStyle(Math.max(2, Math.round(4*UI_SCALE)), 0xff3b30, pulse);
 }
 
 function buildHUD(scene, numPlayers){
