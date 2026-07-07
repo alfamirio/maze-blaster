@@ -311,11 +311,13 @@ const BOT_THINK_IDLE_JITTER_MS = 140;
 // Object key order also drives the lobby dropdown's option order, so
 // 'classic' is listed first.
 const BOT_PERSONALITIES = {
-  classic: { label:'Classic (default)', emoji:'\u{1F916}', desc:'Breaks blocks for power-ups, only fights when a bomb is convenient.' },
-  hunter:  { label:'Hunter',           emoji:'\u{1F3F9}', desc:'Actively chases down other players and bombs aggressively.' },
-  camper:  { label:'Camper',           emoji:'\u{1F3D5}\uFE0F', desc:'Sticks close to its spawn corner, rarely goes looking for trouble.' },
-  chaotic: { label:'Chaotic',          emoji:'\u{1F32A}\uFE0F', desc:'Thinks fast, moves erratically, spams bombs with little planning.' },
-  coward:  { label:'Coward',           emoji:'\u{1F430}', desc:'Avoids other players and only bombs when cornered.' },
+  classic:  { label:'Classic (default)', emoji:'\u{1F916}', desc:'Breaks blocks for power-ups, only fights when a bomb is convenient.' },
+  hunter:   { label:'Hunter',           emoji:'\u{1F3F9}', desc:'Actively chases down other players and bombs aggressively.' },
+  camper:   { label:'Camper',           emoji:'\u{1F3D5}\uFE0F', desc:'Holds its spawn corner and bombs anyone who wanders into range.' },
+  chaotic:  { label:'Chaotic',          emoji:'\u{1F32A}\uFE0F', desc:'Thinks fast, moves erratically, spams bombs with little planning.' },
+  coward:   { label:'Coward',           emoji:'\u{1F430}', desc:'Runs from players anywhere on the map, no home base to retreat to.' },
+  hoarder:  { label:'Hoarder',          emoji:'\u{1F9F2}', desc:'Beelines for power-ups on the field instead of hunting players.' },
+  ambusher: { label:'Ambusher',         emoji:'\u{1FAA4}', desc:'Sets Remote Bomb or Mine traps and waits, rather than fighting head-on.' },
 };
 const DEFAULT_BOT_PERSONALITY_ORDER = ['classic', 'hunter', 'camper']; // default pick for bot slots 1/2/3 in the lobby
 

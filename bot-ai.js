@@ -55,6 +55,24 @@ function computeDangerSet(scene){
       }
     }
   }
+  // Shrinking Arena: any tile currently outside the safe zone counts as
+  // danger too, same as fire or a live bomb's blast. Folding it in here
+  // (rather than teaching each personality about arena bounds separately)
+  // means every existing behavior gets this for free: botRandomSafeStep and
+  // botFirstStepTo's avoidSet already steer clear of danger cells, and
+  // botDecide's "inDanger" branch already reacts urgently and paths a bot
+  // straight back to the nearest non-danger cell — which, if a bot gets
+  // caught outside by a shrink, is now the nearest cell back inside the
+  // safe zone, exactly mirroring the scramble-back-in grace window a human
+  // player gets.
+  if (scene.shrinkingArena && scene.arenaBounds){
+    const b = scene.arenaBounds;
+    for (let r = 0; r < ROWS; r++){
+      for (let c = 0; c < COLS; c++){
+        if (r < b.minR || r > b.maxR || c < b.minC || c > b.maxC) danger.add(r * COLS + c);
+      }
+    }
+  }
   return danger;
 }
 
@@ -113,8 +131,8 @@ function botRandomSafeStep(scene, p, danger){
 
 // ---- Personality tuning -------------------------------------------------
 const CAMPER_RADIUS = 4;       // camper won't wander further than this from its spawn tile
-const CHAOTIC_BOMB_CHANCE = 0.06; // per-think chance a chaotic bot tries to drop a bomb with no real target
-const COWARD_SAFE_RADIUS = 4;  // coward avoids bombing/engaging while a player is within this distance
+const CHAOTIC_BOMB_CHANCE = 0.05; // per-think chance a chaotic bot tries to drop a bomb with no real target
+const COWARD_SAFE_RADIUS = 6;  // coward avoids bombing/engaging while a player is within this distance
 
 // Nearest other living player to p (Manhattan distance — good enough for
 // picking a chase/flee target without the cost of a full BFS per candidate).
@@ -170,6 +188,41 @@ function botIsNearBlock(scene){
 }
 function botAnyPlayerAt(scene, p){
   return (rr, cc) => scene.players.some(pl => pl.alive && pl !== p && pl.row === rr && pl.col === cc);
+}
+
+// Nearest power-up currently sitting on the board (Manhattan distance, same
+// "good enough" tradeoff as botNearestPlayer). 'curse' is excluded by
+// default since it's a trap disguised as a pickup, not something a bot
+// hunting for power-ups actually wants.
+function botFindPowerup(scene, p, excludeTypes){
+  const exclude = excludeTypes || ['curse'];
+  let best = null, bestDist = Infinity;
+  for (let r=0;r<ROWS;r++){
+    for (let c=0;c<COLS;c++){
+      const pu = scene.powerups[r][c];
+      if (!pu || exclude.includes(pu.type)) continue;
+      const dist = Math.abs(r-p.row) + Math.abs(c-p.col);
+      if (dist < bestDist){ bestDist = dist; best = { r, c }; }
+    }
+  }
+  return best;
+}
+
+// Cells a bomb sitting at (row,col) with the given range would actually
+// reach right now — mirrors explodeBomb()'s real resolution (stops at the
+// first solid tile, or at-and-including the first block it would destroy).
+function botBombBlastCells(scene, row, col, range){
+  const cells = [{ r: row, c: col }];
+  for (const d of BOT_DIRS){
+    for (let i = 1; i <= range; i++){
+      const rr = row + d.dr*i, cc = col + d.dc*i;
+      if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS) break;
+      if (scene.solid[rr][cc]) break;
+      cells.push({ r: rr, c: cc });
+      if (scene.blocks[rr][cc]) break;
+    }
+  }
+  return cells;
 }
 
 // ---- Personality behaviors ----------------------------------------------
@@ -258,17 +311,17 @@ function botBehaviorHunter(scene, p, danger){
   return { dirName: step, bombPressed: false, wantsBomb: false };
 }
 
-// Sticks close to its spawn corner: only bombs to clear a nearby block or to
-// defend itself against a player standing right next to it, and retreats
-// home if it's wandered too far. Never goes looking for a fight.
+// Sticks close to its spawn corner and holds it: bombs to clear a nearby
+// block, or bombs any player who wanders into its blast range while it's
+// home (a real territorial turret, not just a shy bot that happens to bomb
+// when touched) — and retreats home if it's wandered too far. Never leaves
+// its corner looking for a fight; unlike Coward, it never runs from one
+// that comes to it.
 function botBehaviorCamper(scene, p, mem, danger){
   if (!mem.spawn) mem.spawn = { r: p.row, c: p.col };
   const spawn = mem.spawn;
   const distFromSpawn = Math.abs(p.row-spawn.r) + Math.abs(p.col-spawn.c);
-  const fleeStep = botEvaluateBomb(scene, p, danger, (rr,cc) => {
-    const adjacentPlayer = Math.abs(rr-p.row)+Math.abs(cc-p.col) === 1 && botAnyPlayerAt(scene, p)(rr,cc);
-    return scene.blocks[rr][cc] || adjacentPlayer;
-  });
+  const fleeStep = botEvaluateBomb(scene, p, danger, (rr,cc) => scene.blocks[rr][cc] || botAnyPlayerAt(scene, p)(rr,cc));
   if (fleeStep) return { dirName: fleeStep, bombPressed: true, wantsBomb: true };
   if (distFromSpawn > CAMPER_RADIUS){
     const step = botFirstStepTo(scene, p.row, p.col, (r,c) => r === spawn.r && c === spawn.c, danger);
@@ -295,9 +348,11 @@ function botBehaviorChaotic(scene, p, danger){
   return { dirName: step, bombPressed: false, wantsBomb: false };
 }
 
-// Avoids other players and only bombs a block (never a player) when nobody
-// is close enough to notice — unless it's genuinely cornered, in which case
-// a bomb may be the only way to open an escape route.
+// A true fugitive, not a turtle: has no home base and will run from a
+// player anywhere on the map, from farther away than Camper ever reacts to
+// one. Only bombs a block (never a player, even one it's fleeing past) when
+// nobody's close enough to notice — or when genuinely cornered, where a
+// bomb may be the only way to open an escape route.
 function botBehaviorCoward(scene, p, danger){
   const target = botNearestPlayer(scene, p);
   const targetDist = target ? Math.abs(target.row-p.row)+Math.abs(target.col-p.col) : Infinity;
@@ -322,12 +377,125 @@ function botBehaviorCoward(scene, p, danger){
   return { dirName: step, bombPressed: false, wantsBomb: false };
 }
 
+// Beelines for whatever power-up is currently on the board instead of
+// hunting players or blocks for their own sake. Only bombs reactively, to
+// clear a block that's blocking its route to the prize or to defend itself
+// if someone's standing right next to it — never to pick a fight.
+function botBehaviorHoarder(scene, p, danger){
+  const fleeStep = botEvaluateBomb(scene, p, danger, (rr,cc) => {
+    const adjacentPlayer = Math.abs(rr-p.row)+Math.abs(cc-p.col) === 1 && botAnyPlayerAt(scene, p)(rr,cc);
+    return adjacentPlayer;
+  });
+  if (fleeStep) return { dirName: fleeStep, bombPressed: true, wantsBomb: true };
+
+  const pu = botFindPowerup(scene, p);
+  if (pu){
+    const step = botFirstStepTo(scene, p.row, p.col, (r,c) => r === pu.r && c === pu.c, danger);
+    if (step) return { dirName: step, bombPressed: false, wantsBomb: false };
+    // Reachable in principle but a block is in the way right now — bomb
+    // through it exactly like Hunter does for a fleeing player, just aimed
+    // at a crate between here and the pickup instead.
+    const path = botPathIgnoringBlocks(scene, p.row, p.col, pu.r, pu.c);
+    const blocker = path && path.find(cell => scene.blocks[cell.r][cell.c]);
+    if (blocker){
+      const bombStep = botEvaluateBomb(scene, p, danger, (rr,cc) => rr === blocker.r && cc === blocker.c);
+      if (bombStep) return { dirName: bombStep, bombPressed: true, wantsBomb: true };
+      const isAdjacentToBlocker = (r,c) => Math.abs(r-blocker.r)+Math.abs(c-blocker.c) === 1;
+      const approachStep = botFirstStepTo(scene, p.row, p.col, isAdjacentToBlocker, danger);
+      if (approachStep) return { dirName: approachStep, bombPressed: false, wantsBomb: false };
+    }
+  }
+  // Nothing worth collecting on the field right now — clear blocks Classic-
+  // style so something eventually drops.
+  const step = botFirstStepTo(scene, p.row, p.col, botIsNearBlock(scene), danger) || botRandomSafeStep(scene, p, danger);
+  return { dirName: step, bombPressed: false, wantsBomb: false };
+}
+
+// How close an enemy needs to be before the Ambusher (without a Detonator
+// yet) considers a Proximity Mine worth dropping right where it's standing.
+const AMBUSH_MINE_RADIUS = 3;
+
+// Remote Bomb half of the Ambusher: stalks the nearest player the same way
+// Hunter does, but once they're lined up within blast range it plants a
+// no-fuse remote bomb instead of an instant one, then holds its ground and
+// watches — pulling the trigger the moment anyone (not necessarily the same
+// player that lined it up) actually steps into the blast footprint.
+function botAmbushWithDetonator(scene, p, danger){
+  if (p.remoteBomb){
+    const cells = botBombBlastCells(scene, p.remoteBomb.row, p.remoteBomb.col, p.remoteBomb.range);
+    const someoneInBlast = scene.players.some(pl => pl.alive && cells.some(cell => cell.r === pl.row && cell.c === pl.col));
+    if (someoneInBlast) return { dirName: null, bombPressed: false, wantsBomb: false, detonatePressed: true };
+    // Nobody's wandered in yet — sit tight and keep watching. (If we're
+    // actually standing inside our own trap's footprint, botDecide's shared
+    // danger check already caught that before this function is even called
+    // and routed us to safety instead.)
+    return { dirName: null, bombPressed: false, wantsBomb: false, detonatePressed: false };
+  }
+  const target = botNearestPlayer(scene, p);
+  if (!target) return { dirName: null, bombPressed: false, wantsBomb: false, detonatePressed: false };
+  // botEvaluateBomb's own escape check doesn't matter here (a remote bomb
+  // never explodes until we choose to), but it's still the exact "is
+  // someone in range from where I'm standing" test we want, so reuse it.
+  const placeStep = botEvaluateBomb(scene, p, danger, botAnyPlayerAt(scene, p));
+  if (placeStep) return { dirName: placeStep, bombPressed: false, wantsBomb: false, detonatePressed: true };
+  // Not lined up on anyone yet — close the distance like Hunter, bombing
+  // through a blocking crate with an instant bomb if needed (no sense
+  // wasting the ambush trap just to clear rubble).
+  const step = botFirstStepTo(scene, p.row, p.col, (r,c) => r === target.row && c === target.col, danger);
+  if (step) return { dirName: step, bombPressed: false, wantsBomb: false, detonatePressed: false };
+  const path = botPathIgnoringBlocks(scene, p.row, p.col, target.row, target.col);
+  const blocker = path && path.find(cell => scene.blocks[cell.r][cell.c]);
+  if (blocker){
+    const bombStep = botEvaluateBomb(scene, p, danger, (rr,cc) => rr === blocker.r && cc === blocker.c);
+    if (bombStep) return { dirName: bombStep, bombPressed: true, wantsBomb: true };
+    const isAdjacentToBlocker = (r,c) => Math.abs(r-blocker.r)+Math.abs(c-blocker.c) === 1;
+    const approachStep = botFirstStepTo(scene, p.row, p.col, isAdjacentToBlocker, danger);
+    if (approachStep) return { dirName: approachStep, bombPressed: false, wantsBomb: false, detonatePressed: false };
+  }
+  return { dirName: null, bombPressed: false, wantsBomb: false, detonatePressed: false };
+}
+
+// Proximity Mine half of the Ambusher: drops a mine as soon as an enemy is
+// generally nearby, then leans on the shared danger-avoidance in botDecide
+// (every armed bomb, remote bomb, and mine already counts as danger there)
+// to carry it clear before the mine finishes arming — no watch-and-detonate
+// step needed since the mine trips itself.
+function botAmbushWithMine(scene, p, danger){
+  if (p.activeMine){
+    const step = botFirstStepTo(scene, p.row, p.col, botIsNearBlock(scene), danger) || botRandomSafeStep(scene, p, danger);
+    return { dirName: step, bombPressed: false, wantsBomb: false };
+  }
+  const target = botNearestPlayer(scene, p);
+  const targetDist = target ? Math.abs(target.row-p.row)+Math.abs(target.col-p.col) : Infinity;
+  if (target && targetDist <= AMBUSH_MINE_RADIUS && !scene.bombs[p.row][p.col]){
+    const flee = botRandomSafeStep(scene, p, danger);
+    return { dirName: flee, bombPressed: false, wantsBomb: false, minePressed: true };
+  }
+  const towardsTarget = target && botFirstStepTo(scene, p.row, p.col, (r,c) => r === target.row && c === target.col, danger);
+  const step = towardsTarget || botFirstStepTo(scene, p.row, p.col, botIsNearBlock(scene), danger) || botRandomSafeStep(scene, p, danger);
+  return { dirName: step, bombPressed: false, wantsBomb: false };
+}
+
+// Sets traps rather than fighting head-on: uses whichever of the Remote Bomb
+// or Proximity Mine abilities it's picked up, preferring the Remote Bomb
+// (a deliberate, aimed trigger) over the Mine (a fire-and-forget one) since
+// it's the more controllable of the two. Before it has either, it hunts
+// like Hunter so it's actually threatening enough to be worth ambushing
+// around once the power-up drops.
+function botBehaviorAmbusher(scene, p, danger){
+  if (p.hasDetonator) return botAmbushWithDetonator(scene, p, danger);
+  if (p.hasMine) return botAmbushWithMine(scene, p, danger);
+  return botBehaviorHunter(scene, p, danger);
+}
+
 const BOT_BEHAVIORS = {
-  classic: (scene, p, mem, danger) => botBehaviorClassic(scene, p, danger),
-  hunter:  (scene, p, mem, danger) => botBehaviorHunter(scene, p, danger),
-  camper:  (scene, p, mem, danger) => botBehaviorCamper(scene, p, mem, danger),
-  chaotic: (scene, p, mem, danger) => botBehaviorChaotic(scene, p, danger),
-  coward:  (scene, p, mem, danger) => botBehaviorCoward(scene, p, danger),
+  classic:  (scene, p, mem, danger) => botBehaviorClassic(scene, p, danger),
+  hunter:   (scene, p, mem, danger) => botBehaviorHunter(scene, p, danger),
+  camper:   (scene, p, mem, danger) => botBehaviorCamper(scene, p, mem, danger),
+  chaotic:  (scene, p, mem, danger) => botBehaviorChaotic(scene, p, danger),
+  coward:   (scene, p, mem, danger) => botBehaviorCoward(scene, p, danger),
+  hoarder:  (scene, p, mem, danger) => botBehaviorHoarder(scene, p, danger),
+  ambusher: (scene, p, mem, danger) => botBehaviorAmbusher(scene, p, danger),
 };
 
 // Decide this bot's action. Thinking is throttled (cached direction is reused
@@ -358,7 +526,7 @@ function botDecide(scene, i, time){
   }
   const here = p.row * COLS + p.col;
   const dir = { up:false, down:false, left:false, right:false };
-  let bombPressed = false;
+  let bombPressed = false, detonatePressed = false, minePressed = false;
   const inDanger = danger.has(here);
 
   // Once the bomb we planted has actually gone off AND its fire has died
@@ -372,11 +540,20 @@ function botDecide(scene, i, time){
   // to move, instead of coasting on a stale cached direction); think more
   // leisurely only while fully safe and idle, so bots aren't twitchy while
   // just exploring. Chaotic bots think faster across the board; campers
-  // think a bit slower while idle since they're mostly just holding position.
+  // think a bit slower while idle since they're mostly just holding
+  // position; cowards think faster than usual (though not as fast as
+  // chaotic's constant twitchiness) specifically while a player is within
+  // their fear radius, so they read as visibly jumpy rather than merely
+  // slow to notice they should be running.
   const urgent = inDanger || mem.waitingForClear;
-  const urgentMs = personality === 'chaotic' ? BOT_THINK_URGENT_MS * 0.6 : BOT_THINK_URGENT_MS;
-  const idleMs = personality === 'chaotic' ? BOT_THINK_IDLE_MS * 0.5
+  const urgentMs = personality === 'chaotic' ? BOT_THINK_URGENT_MS * 0.8 : BOT_THINK_URGENT_MS;
+  const cowardSpooked = personality === 'coward' && (() => {
+    const nearest = botNearestPlayer(scene, p);
+    return !!nearest && (Math.abs(nearest.row-p.row) + Math.abs(nearest.col-p.col)) <= COWARD_SAFE_RADIUS;
+  })();
+  const idleMs = personality === 'chaotic' ? BOT_THINK_IDLE_MS * 0.8
     : personality === 'camper' ? BOT_THINK_IDLE_MS * 1.4
+    : cowardSpooked ? BOT_THINK_IDLE_MS * 0.6
     : BOT_THINK_IDLE_MS;
   mem.nextThink = time + (urgent ? urgentMs + Math.random()*BOT_THINK_URGENT_JITTER_MS : idleMs + Math.random()*BOT_THINK_IDLE_JITTER_MS);
 
@@ -395,10 +572,11 @@ function botDecide(scene, i, time){
     const result = behavior(scene, p, mem, danger);
     if (result.dirName) dir[result.dirName] = true;
     bombPressed = result.bombPressed;
+    detonatePressed = !!result.detonatePressed;
+    minePressed = !!result.minePressed;
     if (result.wantsBomb) mem.waitingForClear = true;
   }
 
   mem.dir = dir;
-  return { dir, bombPressed };
+  return { dir, bombPressed, detonatePressed, minePressed };
 }
-

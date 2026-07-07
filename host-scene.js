@@ -787,6 +787,8 @@ class HostScene extends Phaser.Scene {
           const action = botDecide(this, i, time);
           dir = action.dir;
           bombPressed = action.bombPressed;
+          detonatePressed = !!action.detonatePressed;
+          minePressed = !!action.minePressed;
         } else {
           dir = this.remoteInput[i] || { up:false, down:false, left:false, right:false };
           bombPressed = false;
