@@ -1,10 +1,12 @@
 // ====================== LOBBY WIRING ======================
 setupTouchControls();
 
-// Options are saved locally (map size + speed + sound on/off) so the choice
-// survives a page reload without needing any server/account.
+// Options are saved locally (map size + speed + sound on/off + fps cap) so
+// the choice survives a page reload without needing any server/account.
 const SETTINGS_KEY = 'mazeBlasterSettings';
 let SOUND_ENABLED = true;
+const FPS_CAP_OPTIONS = [30, 20, 15, 10];
+let SELECTED_FPS_CAP = 30;
 // Empty string means "no custom name" — playerDisplayName() falls back to the
 // default P1/P2/etc label in that case, so leaving this blank is intentional,
 // not a bug.
@@ -29,6 +31,11 @@ function loadSettings(){
       const sndSel = document.getElementById('sound-toggle');
       if (sndSel) sndSel.value = SOUND_ENABLED ? 'on' : 'off';
     }
+    if (saved && FPS_CAP_OPTIONS.includes(saved.fpsCap)){
+      SELECTED_FPS_CAP = saved.fpsCap;
+      const fpsSel = document.getElementById('fps-cap');
+      if (fpsSel) fpsSel.value = String(SELECTED_FPS_CAP);
+    }
     if (saved && typeof saved.playerName === 'string'){
       PLAYER_NAME = saved.playerName.trim().slice(0, 16);
       const nameInput = document.getElementById('player-name');
@@ -42,7 +49,7 @@ function loadSettings(){
 }
 function saveSettings(){
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED, playerName: PLAYER_NAME }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED, fpsCap: SELECTED_FPS_CAP, playerName: PLAYER_NAME }));
   } catch (e) {
     // Storage full or unavailable — the choice just won't persist this time.
   }
@@ -68,6 +75,11 @@ document.getElementById('game-speed').onchange = e => {
 document.getElementById('sound-toggle').onchange = e => {
   SOUND_ENABLED = e.target.value === 'on';
   SFX.setEnabled(SOUND_ENABLED);
+  saveSettings();
+};
+document.getElementById('fps-cap').onchange = e => {
+  const val = parseInt(e.target.value, 10);
+  SELECTED_FPS_CAP = FPS_CAP_OPTIONS.includes(val) ? val : 30;
   saveSettings();
 };
 document.getElementById('player-name').onchange = e => {
@@ -99,13 +111,13 @@ function makeConfig(SceneClass){
     scene: SceneClass,
     resolution: 1,
     render: { roundPixels: true },
-    // Cap the render/update loop at 30fps rather than the browser's native
-    // refresh rate. forceSetTimeOut swaps Phaser's internal loop off
-    // requestAnimationFrame (which always fires at display refresh rate,
-    // e.g. 60/120/144Hz, regardless of the `target` below) and onto a
+    // Cap the render/update loop at the player's chosen FPS rather than the
+    // browser's native refresh rate. forceSetTimeOut swaps Phaser's internal
+    // loop off requestAnimationFrame (which always fires at display refresh
+    // rate, e.g. 60/120/144Hz, regardless of the `target` below) and onto a
     // setTimeout-driven loop that actually paces itself to `target`.
     fps: {
-      target: 30,
+      target: SELECTED_FPS_CAP,
       forceSetTimeOut: true,
     },
     scale: {
@@ -151,8 +163,10 @@ function updateFpsDisplay(){
   const fps = Math.round(currentGame.loop.actualFps);
   el.textContent = fps + ' FPS';
   el.classList.remove('hidden');
-  el.classList.toggle('fps-low', fps < 25 && fps >= 15);
-  el.classList.toggle('fps-critical', fps < 15);
+  const lowThreshold = Math.round(SELECTED_FPS_CAP * 0.8);
+  const criticalThreshold = Math.round(SELECTED_FPS_CAP * 0.5);
+  el.classList.toggle('fps-low', fps < lowThreshold && fps >= criticalThreshold);
+  el.classList.toggle('fps-critical', fps < criticalThreshold);
 }
 setInterval(updateFpsDisplay, 500);
 function isTouchDevice(){

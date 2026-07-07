@@ -151,7 +151,16 @@
         <option value="off">Off</option>
       </select>
     </div>
-    <div id="options-hint">Your name is broadcast to other players when you host, join, or play solo — leave it blank to use the default P1, P2, etc. Map size and Speed apply when you start a Solo or Hosted game. Sound applies immediately. All are saved on this device.</div>
+    <div class="option-row">
+      <label for="fps-cap">FPS cap</label>
+      <select id="fps-cap">
+        <option value="30" selected>30</option>
+        <option value="20">20</option>
+        <option value="15">15</option>
+        <option value="10">10</option>
+      </select>
+    </div>
+    <div id="options-hint">Your name is broadcast to other players when you host, join, or play solo — leave it blank to use the default P1, P2, etc. Map size, Speed, and FPS cap apply when you start a Solo or Hosted game. Sound applies immediately. All are saved on this device.</div>
     <button id="btn-options-back">Back</button>
   </div>
 
