@@ -54,6 +54,13 @@
   #bot-count-row select { padding:5px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
   #join-code { width:100%; box-sizing:border-box; padding:10px; border-radius:8px; border:1px solid #333; background:#0e1013; color:#eee; font-size:14px; text-align:center; }
   .mode-spacer { flex:1; min-height:10px; }
+  #map-params-panel { text-align:left; margin-bottom:10px; }
+  .map-params-title { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; }
+  .map-param-row { display:flex; align-items:center; justify-content:space-between; font-size:12px; color:#999; padding:2px 0; }
+  .map-param-row span:last-child { color:#eee; font-weight:500; }
+  .map-param-edit-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:#ccc; margin:0 0 7px; }
+  .map-param-edit-row input[type="number"] { width:60px; box-sizing:border-box; padding:4px 6px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:12px; text-align:right; }
+  .map-param-edit-row input[type="checkbox"] { width:16px; height:16px; accent-color:#2ecc71; }
   #host-panel { width:100%; box-sizing:border-box; }
   #btn-play { width:100%; padding:13px; margin:0; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; background:#3498db; color:#fff; }
   #btn-start { width:100%; padding:13px; margin:8px 0 0; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; background:#2ecc71; color:#0b1f13; }
@@ -88,6 +95,7 @@
   #btn-bomb { width:70px; height:70px; background:rgba(231,76,60,0.5); font-size:14px; }
   #btn-kick { width:58px; height:58px; background:rgba(241,196,15,0.5); font-size:12px; margin-left:8px; }
   #btn-detonate { width:58px; height:58px; background:rgba(155,89,182,0.5); font-size:11px; margin-left:8px; }
+  #btn-mine { width:58px; height:58px; background:rgba(255,152,0,0.5); font-size:11px; margin-left:8px; }
   #action-buttons { display:flex; align-items:flex-end; }
 
   #btn-export { position:fixed; top:10px; right:10px; z-index:20; padding:9px 14px; border:none; border-radius:8px; background:#2ecc71; color:#0b1f13; font-size:13px; font-weight:600; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.4); }
@@ -148,6 +156,48 @@
         </div>
 
         <div id="mode-spacer" class="mode-spacer">
+          <div id="map-params-panel">
+            <div class="map-params-title">Map parameters</div>
+            <div id="map-params-readonly"></div>
+            <div id="map-params-custom" class="hidden">
+              <div class="map-param-edit-row">
+                <label for="cp-pillars">Pillars</label>
+                <input type="checkbox" id="cp-pillars" checked>
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-blockfill">Crate density (0-1)</label>
+                <input type="number" id="cp-blockfill" min="0" max="1" step="0.05" value="0.7">
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-powerup">Power-up chance (0-1)</label>
+                <input type="number" id="cp-powerup" min="0" max="1" step="0.05" value="0.35">
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-teleporters">Teleporter pairs</label>
+                <input type="number" id="cp-teleporters" min="0" max="8" step="1" value="0">
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-fusemult">Fuse speed (×)</label>
+                <input type="number" id="cp-fusemult" min="0.3" max="2" step="0.1" value="1">
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-blastrange">Extra blast range</label>
+                <input type="number" id="cp-blastrange" min="0" max="3" step="1" value="0">
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-fog">Fog of War</label>
+                <input type="checkbox" id="cp-fog">
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-shrink">Shrinking Arena</label>
+                <input type="checkbox" id="cp-shrink">
+              </div>
+              <div class="map-param-edit-row">
+                <label for="cp-daynight">Day/Night Cycle</label>
+                <input type="checkbox" id="cp-daynight">
+              </div>
+            </div>
+          </div>
           <div id="host-panel" class="hidden">
             <div id="room-code-display"></div>
             <div id="qr-code" class="hidden"></div>
@@ -208,7 +258,7 @@
 <div id="reconnect-banner" class="hidden">⚠️ Connection to host lost — reconnecting…</div>
 <div id="game-wrap" class="hidden">
   <div id="game"></div>
-  <div id="hint">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Kick: K &nbsp;|&nbsp; Remote Bomb: F (place / detonate) &nbsp;|&nbsp; Host presses R to restart</div>
+  <div id="hint">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Kick: K &nbsp;|&nbsp; Remote Bomb: F (place / detonate) &nbsp;|&nbsp; Mine: M (place / detonate) &nbsp;|&nbsp; Host presses R to restart</div>
 </div>
 <button id="btn-export" class="hidden">⬇ Export moves (JSON)</button>
 <div id="top-left-controls">
@@ -228,6 +278,7 @@
   </div>
   <div id="action-buttons">
     <button id="btn-detonate">RMT</button>
+    <button id="btn-mine">MINE</button>
     <button id="btn-kick">KICK</button>
     <button id="btn-bomb">BOMB</button>
   </div>
@@ -289,11 +340,17 @@ let SELECTED_MAP_SIZE = 'default'; // set from the Options menu, applied when a 
 // pairs), so any scenario works for Solo, Host, or Join alike.
 const SCENARIOS = {
   standard:        { label:'Standard',        desc:'The classic maze — indestructible pillars plus destructible crates.', pillars:true,  blockFillChance:0.7,  powerupSpawnChance:0.35 },
+  custom:          { label:'Custom',          desc:'Fully custom map — tweak all.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, teleporterPairs:0, fuseMult:1, extraBlastRange:0, fogOfWar:false, shrinkingArena:false, dayNightCycle:false, isCustom:true },  
   open_arena:      { label:'Open Arena',      desc:'No pillars — just the border and crates. Fast, open, and chaotic.',    pillars:false, blockFillChance:0.7,  powerupSpawnChance:0.35 },
+  sudden_death:    { label:'Sudden Death',    desc:'Bombs fuse in half the time and everyone starts with a bigger blast.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, fuseMult:0.5, extraBlastRange:1 },  
   crate_rush:      { label:'Crate Rush',      desc:'A much denser crate maze — more to clear, more power-ups to find.',    pillars:true,  blockFillChance:0.92, powerupSpawnChance:0.35 },
-  powerup_frenzy:  { label:'Power-up Frenzy', desc:'Classic maze, but nearly every crate you break drops a power-up.',     pillars:true,  blockFillChance:0.7,  powerupSpawnChance:0.85 },
-  sudden_death:    { label:'Sudden Death',    desc:'Bombs fuse in half the time and everyone starts with a bigger blast — matches end fast.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, fuseMult:0.5, extraBlastRange:1 },
-  teleporters:     { label:'Teleporters',     desc:'A few glowing portal pairs are scattered on the maze — step on one to instantly warp to its match.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, teleporterPairs:2 },
+  minimalist:      { label:'Minimalist',      desc:'No pillars and hardly any crates.', pillars:false, blockFillChance:0.20, powerupSpawnChance:0.35 },  
+  teleporters:     { label:'Teleporters',     desc:'A few glowing portal pairs are scattered on the maze.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, teleporterPairs:1 },
+  portal_chaos:    { label:'Portal Chaos',    desc:'No pillars and many portal pairs flood the open maze.',  pillars:false, blockFillChance:0.25,  powerupSpawnChance:0.35, teleporterPairs:3 },
+  fog_of_war:      { label:'Fog of War',      desc:'Classic maze, but you can only see a radius around your own player.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, fogOfWar:true },
+  day_night_cycle: { label:'Day/Night Cycle', desc:'The map alternates between normal and a fog-of-war.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, dayNightCycle:true },
+  shrinking_arena: { label:'Shrinking Arena', desc:'Battle-royale style, the playable area shrinks.', pillars:true, blockFillChance:0.6, powerupSpawnChance:0.4, shrinkingArena:true },
+  powerup_frenzy:  { label:'Power-up Frenzy', desc:'Minimalist maze, but battle-royale style.',     pillars:true,  blockFillChance:0.20,  powerupSpawnChance:0.85, shrinkingArena:true },
 };
 let SELECTED_SCENARIO = 'standard'; // set by the map picker, applied when a Solo game starts
 
@@ -377,6 +434,33 @@ const MAX_SHIELD = 3;
 // Brief invulnerability after a shield absorbs a hit, so the same lingering
 // flame doesn't burn through every stacked shield in a single instant.
 const SHIELD_HIT_IFRAME_MS = 500;
+
+// Fog of War scenario: how many tiles around the local player are fully lit,
+// plus one extra ring of partial visibility before the fog goes fully dark.
+// Distance is Chebyshev (max of row/col delta), so the lit area is a square
+// centered on the player rather than a circle — cheap to compute per-tile
+// every frame and reads cleanly against the grid.
+const FOG_VISIBLE_RADIUS = 2;
+const FOG_PARTIAL_ALPHA = 0.55;
+const FOG_DARK_ALPHA = 1;
+
+// Shrinking Arena scenario: the play area starts as the full board, then
+// every SHRINK_INTERVAL_MS the safe zone contracts by one ring (border tiles
+// on all four sides), after an initial SHRINK_GRACE_MS with no shrinking at
+// all so early-game movement isn't affected. Anyone caught outside the
+// current safe zone takes damage the same way a lingering flame would
+// (respecting shields/i-frames), on every tick rather than only once, so
+// straying back out after a shield pops still hurts.
+const SHRINK_GRACE_MS = 14000;
+const SHRINK_INTERVAL_MS = 9000;
+
+// Day/Night Cycle scenario: alternates between a normal "day" phase (no fog)
+// and a "night" phase (same fog-of-war visuals as the Fog of War scenario)
+// every DAY_NIGHT_PHASE_MS, starting with day. The host is authoritative for
+// which phase it currently is (broadcast each tick as data.isNight) so every
+// viewer's screen switches at the same moment, even though — like regular
+// Fog of War — each viewer's fog is still centered on their own player.
+const DAY_NIGHT_PHASE_MS = 20000;
 
 // Mutable, speed-scaled versions of the BASE_* values above. These are what
 // the rest of the game actually reads; applySpeedSetting() recomputes them
@@ -848,6 +932,32 @@ function drawDetonatorIcon(g){
   g.beginPath(); g.arc(9*s, -2*s, 3*s, Math.PI*0.9, Math.PI*1.6, false); g.strokePath();
   g.beginPath(); g.arc(9*s, -2*s, 5.5*s, Math.PI*0.9, Math.PI*1.6, false); g.strokePath();
 }
+// Proximity Mine power-up: a squat studded disc (classic landmine silhouette)
+// with a small blinking warning light on top, reading as "hidden hazard"
+// rather than "carry and throw" like the other pickups.
+function drawMineIcon(g){
+  const s = UI_SCALE * 1.6;
+  g.lineStyle(Math.max(2, 1.5*s), 0xffffff, 0.9);
+  g.strokeEllipse(0, 3*s, 13*s, 6*s);
+  g.fillStyle(0x3a3a3a, 1);
+  g.fillEllipse(0, 3*s, 12.6*s, 5.6*s);
+  g.lineStyle(Math.max(1, 0.8*s), 0x151515, 1);
+  g.strokeEllipse(0, 3*s, 12.6*s, 5.6*s);
+  // top plate, slightly raised
+  g.fillStyle(0x545454, 1);
+  g.fillEllipse(0, 1*s, 9*s, 4*s);
+  g.lineStyle(Math.max(1, 0.7*s), 0x1c1c1c, 1);
+  g.strokeEllipse(0, 1*s, 9*s, 4*s);
+  // studs ringing the plate
+  g.fillStyle(0x232323, 1);
+  const studAngles = [0.2, 1.0, 1.8, 2.6, 3.4, 4.2, 5.0, 5.8];
+  for (const a of studAngles) g.fillCircle(Math.cos(a)*6*s, 1*s + Math.sin(a)*2.6*s, 0.9*s);
+  // warning light on top
+  g.fillStyle(0xff3b30, 1);
+  g.fillCircle(0, -0.6*s, 2.1*s);
+  g.fillStyle(0xffb3ac, 0.85);
+  g.fillCircle(-0.6*s, -1.2*s, 0.8*s);
+}
 // Builds the power-up visual (icon only, no background circle) as a
 // container, and makes it float (gentle vertical bob) so it stands out on
 // the floor.
@@ -860,6 +970,7 @@ function createPowerupVisual(scene, x, y, type){
   else if (type === 'heart') drawHeartIcon(icon);
   else if (type === 'pierce') drawPierceIcon(icon);
   else if (type === 'detonator') drawDetonatorIcon(icon);
+  else if (type === 'mine') drawMineIcon(icon);
   else drawSkullIcon(icon);
   // Shadow stays put on the tile while only the icon bobs above it — the
   // growing/shrinking gap between the two is what actually reads as "floating".
@@ -915,12 +1026,22 @@ const BOMB_FLASH_COLOR= { r:0xff, g:0x40, b:0x40 };
 const REMOTE_BOMB_COLOR      = 0x9b59b6; // matches the Detonator power-up/button color
 const REMOTE_BOMB_BASE_COLOR = { r:0x24, g:0x18, b:0x2c };
 const REMOTE_BOMB_FLASH_COLOR= { r:0xaf, g:0x5a, b:0xd6 };
-function createBombVisual(scene, x, y, isRemote){
-  const strokeColor = isRemote ? REMOTE_BOMB_COLOR : 0xff5555;
-  const circle = scene.add.circle(0, 0, TILE*0.3, 0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE), strokeColor);
+const MINE_COLOR       = 0xff9800; // warning orange, distinct from remote purple and normal red
+const MINE_BASE_COLOR  = { r:0x2c, g:0x1e, b:0x10 };
+const MINE_FLASH_COLOR = { r:0xff, g:0x98, b:0x00 };
+const MINE_ARM_DELAY   = 500;   // ms before a freshly placed mine can be tripped, so the placer can step off it
+const MINE_TRIGGER_RADIUS = 1;  // Manhattan distance that trips the mine (0 = same tile only)
+const MINE_FUSE_MS = 15000;     // safety fallback so an untouched mine doesn't sit forever
+function createBombVisual(scene, x, y, isRemote, isMine){
+  const strokeColor = isMine ? MINE_COLOR : (isRemote ? REMOTE_BOMB_COLOR : 0xff5555);
+  // Mines sit low-profile and small — they're meant to be easy to miss
+  // underfoot, unlike a normal bomb's big obvious body.
+  const radius = isMine ? TILE*0.16 : TILE*0.3;
+  const circle = scene.add.circle(0, 0, radius, 0x1c1c1c).setStrokeStyle(Math.round(2*UI_SCALE), strokeColor);
   // Remote bombs show a fixed radio glyph instead of a countdown, since they
-  // have no fuse — they only go off when the owner detonates them.
-  const text = scene.add.text(0, 1*UI_SCALE, isRemote ? '\u{1F4E1}' : '', {
+  // have no fuse — they only go off when the owner detonates them. Mines
+  // show nothing at all (no countdown, no glyph) to stay stealthy.
+  const text = scene.add.text(0, 1*UI_SCALE, isMine ? '' : (isRemote ? '\u{1F4E1}' : ''), {
     fontFamily: 'system-ui, sans-serif',
     fontSize: Math.round((isRemote?13:17)*UI_SCALE)+'px',
     fontStyle: 'bold',
@@ -930,16 +1051,27 @@ function createBombVisual(scene, x, y, isRemote){
   }).setOrigin(0.5);
   // Shadow lives outside the pulsing sub-container so it stays a calm,
   // fixed ellipse on the ground while the bomb body scales/flashes above it.
-  const shadow = scene.add.ellipse(0, TILE*0.27, TILE*0.5, TILE*0.16, 0x000000, 0.35);
+  const shadow = scene.add.ellipse(0, TILE*0.27, isMine ? TILE*0.28 : TILE*0.5, isMine ? TILE*0.1 : TILE*0.16, 0x000000, 0.35);
   const pulse = scene.add.container(0, 0, [circle, text]);
   const container = scene.add.container(x, y, [shadow, pulse]);
   container.circleGfx = circle;
   container.textGfx = text;
   container.pulseGfx = pulse;
   container.isRemote = !!isRemote;
+  container.isMine = !!isMine;
   return container;
 }
 function updateBombVisual(container, placedAt, now){
+  if (container.isMine){
+    // A slow amber blink — "armed and waiting", but subtler than the remote
+    // bomb's pulse so it still reads as something you could step past
+    // without noticing.
+    const flash = (Math.sin((now/1000) * 1.4 * Math.PI*2) + 1) / 2; // 0..1
+    const color = lerpColorInt(MINE_BASE_COLOR, MINE_FLASH_COLOR, flash*0.55);
+    container.circleGfx.setFillStyle(color);
+    container.pulseGfx.setScale(1 + flash*0.08);
+    return;
+  }
   if (container.isRemote){
     // No fuse to count down — just a slow, steady "armed and waiting" pulse
     // so it's clearly distinct from a ticking normal bomb.
@@ -1063,6 +1195,7 @@ const localTouch = { up:false, down:false, left:false, right:false };
 let localBombTapped = false;
 let localKickTapped = false;
 let localDetonateTapped = false;
+let localMineTapped = false;
 
 function setupTouchControls(){
   const bind = (id, key) => {
@@ -1076,6 +1209,7 @@ function setupTouchControls(){
   document.getElementById('btn-bomb').addEventListener('pointerdown', e => { e.preventDefault(); localBombTapped = true; });
   document.getElementById('btn-kick').addEventListener('pointerdown', e => { e.preventDefault(); localKickTapped = true; });
   document.getElementById('btn-detonate').addEventListener('pointerdown', e => { e.preventDefault(); localDetonateTapped = true; });
+  document.getElementById('btn-mine').addEventListener('pointerdown', e => { e.preventDefault(); localMineTapped = true; });
 }
 function consumeLocalBombTap(){
   if (localBombTapped){ localBombTapped = false; return true; }
@@ -1087,6 +1221,10 @@ function consumeLocalKickTap(){
 }
 function consumeLocalDetonateTap(){
   if (localDetonateTapped){ localDetonateTapped = false; return true; }
+  return false;
+}
+function consumeLocalMineTap(){
+  if (localMineTapped){ localMineTapped = false; return true; }
   return false;
 }
 function readLocalDirection(keys){
@@ -1109,6 +1247,7 @@ function makeLocalKeys(scene){
     enter: kb.addKey('ENTER'),
     kick:  kb.addKey('K'),
     detonate: kb.addKey('F'),
+    mine: kb.addKey('M'),
   };
 }
 function localBombJustPressed(keys){
@@ -1127,6 +1266,12 @@ function localKickJustPressed(keys){
 // one out yet, or detonates it right now if they do.
 function localDetonateJustPressed(keys){
   return Phaser.Input.Keyboard.JustDown(keys.detonate) || consumeLocalDetonateTap();
+}
+// Proximity Mine input: places the player's one active mine (if they have
+// the ability and don't already have one out). Dedicated key/button, kept
+// separate from the bomb button so it can't be triggered by accident.
+function localMineJustPressed(keys){
+  return Phaser.Input.Keyboard.JustDown(keys.mine) || consumeLocalMineTap();
 }
 
 // ====================== BOARD HELPERS (shared, deterministic) ======================
@@ -1406,7 +1551,7 @@ function makePlayers(scene, numPlayers){
     const eyeR = scene.add.circle(0, 0, eyeRad, 0x161616);
     const label = scene.add.text(0, -TILE*0.55, playerDisplayName(i), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
     container.add([shadow, body, curseRing, shieldRing, eyeL, eyeR, label]);
-    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, hasKick:false, shieldCount:0, pierce:false, hasDetonator:false, remoteBomb:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc };
+    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, hasKick:false, shieldCount:0, pierce:false, hasDetonator:false, remoteBomb:null, hasMine:false, activeMine:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc };
     positionPlayerEyes(player);
     players.push(player);
   }
@@ -1428,6 +1573,58 @@ function formatMatchTime(ms){
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return m + ':' + String(s).padStart(2, '0');
+}
+
+// ====================== FOG OF WAR (visual only, per-viewer) ======================
+// One Graphics object, redrawn every frame: fully dark everywhere except a
+// small square around the given player's current tile, with one soft
+// in-between ring. Runs independently on the host's own screen and on each
+// client's own screen — every viewer sees fog centered on *their own*
+// player, not a shared board-wide reveal.
+function createFogOverlay(scene){
+  return scene.add.graphics().setDepth(900);
+}
+function updateFogOverlay(gfx, player){
+  gfx.clear();
+  if (!player || !player.alive) return; // eliminated/spectating players see the whole board
+  const pr = player.row, pc = player.col;
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      const dist = Math.max(Math.abs(r-pr), Math.abs(c-pc));
+      if (dist <= FOG_VISIBLE_RADIUS) continue;
+      const alpha = dist <= FOG_VISIBLE_RADIUS+1 ? FOG_PARTIAL_ALPHA : FOG_DARK_ALPHA;
+      gfx.fillStyle(0x000000, alpha);
+      gfx.fillRect(c*TILE, HUD_H + r*TILE, TILE, TILE);
+    }
+  }
+}
+
+// ====================== SHRINKING ARENA (visual + host-authoritative damage) ======================
+// bounds = {minR,maxR,minC,maxC}: the inclusive tile range still "safe".
+// Everything outside gets a red danger-zone tint; the host alone decides
+// when it shrinks and who it hurts, clients just render whatever bounds the
+// host broadcasts.
+function createArenaOverlay(scene){
+  return scene.add.graphics().setDepth(850);
+}
+function updateArenaOverlay(gfx, bounds){
+  gfx.clear();
+  if (!bounds) return;
+  for (let r = 0; r < ROWS; r++){
+    for (let c = 0; c < COLS; c++){
+      if (r >= bounds.minR && r <= bounds.maxR && c >= bounds.minC && c <= bounds.maxC) continue;
+      gfx.fillStyle(0xcc2222, 0.38);
+      gfx.fillRect(c*TILE, HUD_H + r*TILE, TILE, TILE);
+    }
+  }
+}
+// Shrinks the safe zone by one ring on each side, leaving at least a 3x3
+// core so the match always has some playable space left even if the timer
+// runs long. Returns true if it actually shrank (bounds changed).
+function shrinkArenaBounds(bounds){
+  if (bounds.maxR - bounds.minR <= 2 || bounds.maxC - bounds.minC <= 2) return false;
+  bounds.minR++; bounds.maxR--; bounds.minC++; bounds.maxC--;
+  return true;
 }
 
 function buildHUD(scene, numPlayers){
@@ -1875,6 +2072,9 @@ let NET_BOT_COUNT = 0; // solo mode only: players 1..NET_BOT_COUNT are AI-contro
 let NET_BLOCKS_GRID = null;
 let NET_PILLARS = true;     // client-side mirror of the host's scenario.pillars flag
 let NET_TELEPORTERS = [];   // client-side mirror of the host's _teleporterPairsList (visuals only)
+let NET_FOG_OF_WAR = false;      // client-side mirror of the host's scenario.fogOfWar flag
+let NET_SHRINKING_ARENA = false; // client-side mirror of the host's scenario.shrinkingArena flag
+let NET_DAY_NIGHT_CYCLE = false; // client-side mirror of the host's scenario.dayNightCycle flag
 let NET_IS_SOLO = false;    // true only for "Play Solo" runs — enables move recording/export
 let MATCH_SEED_CONSUMED = false; // reset to false whenever a fresh match is (re)launched from the lobby
 let activeHostScene = null; // reference to the live HostScene instance, for the export button
@@ -2000,6 +2200,35 @@ class HostScene extends Phaser.Scene {
     const hud = buildHUD(this, NET_NUM_PLAYERS);
     this.hudTexts = hud.hudTexts; this.winText = hud.winText; this.timerText = hud.timerText;
 
+    // Fog of War: fog is drawn around the host's own player (index 0) —
+    // each remote client independently draws its own fog around whichever
+    // player it controls, so nobody actually loses a shared view; every
+    // screen just centers the darkness differently. Day/Night Cycle reuses
+    // the exact same overlay, just toggling it on and off on a timer instead
+    // of leaving it on the whole match.
+    this.fogOfWar = !!scenario.fogOfWar;
+    this.dayNightCycle = !!scenario.dayNightCycle;
+    this.isNight = false; // only meaningful while dayNightCycle is active; starts as day
+    this.fogGfx = (this.fogOfWar || this.dayNightCycle) ? createFogOverlay(this) : null;
+    this.dayNightText = this.dayNightCycle
+      ? this.add.text(10*UI_SCALE, HUD_H + 10*UI_SCALE, '\u2600\uFE0F Day', { fontSize:Math.round(14*UI_SCALE)+'px', color:'#ffe9a8', fontStyle:'bold' }).setDepth(950)
+      : null;
+
+    // Shrinking Arena: bounds start as the whole board and contract toward
+    // the center every SHRINK_INTERVAL_MS, after an initial SHRINK_GRACE_MS
+    // with no shrinking. Scheduling uses Date.now() rather than the Phaser
+    // scene clock, matching the match timer above, since the scene clock
+    // isn't guaranteed to reset to 0 on a mid-session restart (R).
+    this.shrinkingArena = !!scenario.shrinkingArena;
+    if (this.shrinkingArena){
+      this.arenaBounds = { minR:0, maxR:ROWS-1, minC:0, maxC:COLS-1 };
+      this.nextShrinkAt = Date.now() + SHRINK_GRACE_MS;
+      this.arenaGfx = createArenaOverlay(this);
+    } else {
+      this.arenaBounds = null;
+      this.arenaGfx = null;
+    }
+
     // Player 0 is always the local human. In solo mode, players 1..NET_BOT_COUNT
     // are AI bots; any remaining players are real network clients (multiplayer).
     this.controllers = [];
@@ -2027,7 +2256,7 @@ class HostScene extends Phaser.Scene {
         mapSize: SELECTED_MAP_SIZE,
         speed: SELECTED_SPEED,
         scenario: SELECTED_SCENARIO, // 'standard' | 'open_arena' | 'crate_rush' | ...
-        scenarioConfig: { pillars: scenario.pillars, blockFillChance: scenario.blockFillChance, powerupSpawnChance: scenario.powerupSpawnChance, fuseMult: scenario.fuseMult || 1, extraBlastRange: scenario.extraBlastRange || 0 },
+        scenarioConfig: { pillars: scenario.pillars, blockFillChance: scenario.blockFillChance, powerupSpawnChance: scenario.powerupSpawnChance, fuseMult: scenario.fuseMult || 1, extraBlastRange: scenario.extraBlastRange || 0, fogOfWar: !!scenario.fogOfWar, shrinkingArena: !!scenario.shrinkingArena, dayNightCycle: !!scenario.dayNightCycle },
         cols: COLS, rows: ROWS, tile: TILE, hudHeight: HUD_H,
         numPlayers: NET_NUM_PLAYERS,
         botCount: NET_BOT_COUNT,
@@ -2072,11 +2301,13 @@ class HostScene extends Phaser.Scene {
     this.remoteBombQueue = {};  // idx -> pending count
     this.remoteKickQueue = {};  // idx -> pending count
     this.remoteDetonateQueue = {}; // idx -> pending count
+    this.remoteMineQueue = {}; // idx -> pending count
     net.onInput = (idx, data) => {
       this.remoteInput[idx] = { up:data.up, down:data.down, left:data.left, right:data.right };
       if (data.bombPressed) this.remoteBombQueue[idx] = (this.remoteBombQueue[idx] || 0) + 1;
       if (data.kickPressed) this.remoteKickQueue[idx] = (this.remoteKickQueue[idx] || 0) + 1;
       if (data.detonatePressed) this.remoteDetonateQueue[idx] = (this.remoteDetonateQueue[idx] || 0) + 1;
+      if (data.minePressed) this.remoteMineQueue[idx] = (this.remoteMineQueue[idx] || 0) + 1;
     };
     net.onDisconnect = (idx) => {
       // Don't eliminate immediately — just stop reacting to their stale last
@@ -2107,7 +2338,7 @@ class HostScene extends Phaser.Scene {
     this.matchStartTime = Date.now();
     this.frozenElapsed = 0;
 
-    net.broadcastStart({ blocksGrid: this.blocksGridBool, pillars: !!scenario.pillars, teleporters: this._teleporterPairsList, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED, seed: this.currentSeed });
+    net.broadcastStart({ blocksGrid: this.blocksGridBool, pillars: !!scenario.pillars, teleporters: this._teleporterPairsList, fogOfWar: this.fogOfWar, shrinkingArena: this.shrinkingArena, dayNightCycle: this.dayNightCycle, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED, seed: this.currentSeed });
   }
 
   // Walls and destructible blocks always block movement, regardless of any
@@ -2256,6 +2487,7 @@ class HostScene extends Phaser.Scene {
     else if (pu.type === 'heart') p.shieldCount = Math.min((p.shieldCount||0) + 1, MAX_SHIELD);
     else if (pu.type === 'pierce') p.pierce = true;
     else if (pu.type === 'detonator') p.hasDetonator = true;
+    else if (pu.type === 'mine') p.hasMine = true;
     else this.applyCurse(p);
     SFX.powerup();
     destroyPowerupVisual(pu.gfx);
@@ -2283,12 +2515,48 @@ class HostScene extends Phaser.Scene {
     this.time.delayedCall(BOMB_FUSE, () => this.explodeBomb(bomb));
   }
 
+  // Proximity Mine: works like the Remote Bomb power-up — picking it up
+  // grants the permanent ability, but only one mine can be out on the field
+  // at once (tracked via p.activeMine). It's placed with its own action
+  // (the M key / mine button) rather than the normal bomb button, and has
+  // no fuse countdown: it sits silent and nearly invisible until any player
+  // (owner included) wanders within MINE_TRIGGER_RADIUS tiles of it, at
+  // which point checkMines() detonates it. A long safety fuse still applies
+  // so an untouched mine can't camp a tile forever.
+  placeMine(p){
+    if (!p.alive || !p.hasMine || p.activeMine) return;
+    if (this.bombs[p.row][p.col]) return;
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'mine', player:p.id, row:p.row, col:p.col, range:p.blastRange });
+    SFX.bombPlaced();
+    const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
+    const gfx = createBombVisual(this, x, y, false, true);
+    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, pierce:!!p.pierce, placedAt:this.time.now, mine:true, armAt:this.time.now + MINE_ARM_DELAY };
+    this.bombs[p.row][p.col] = bomb;
+    this.activeBombs.push(bomb);
+    p.activeMine = bomb;
+    this.time.delayedCall(MINE_FUSE_MS, () => this.explodeBomb(bomb));
+  }
+
+  // Called every update() tick: trips any armed mine that has a player
+  // (any player, including its own owner) within its trigger radius.
+  checkMines(time){
+    for (const bomb of this.activeBombs){
+      if (!bomb.mine || bomb.exploded) continue;
+      if (time < bomb.armAt) continue;
+      for (const p of this.players){
+        if (!p.alive) continue;
+        const dist = Math.abs(p.row - bomb.row) + Math.abs(p.col - bomb.col);
+        if (dist <= MINE_TRIGGER_RADIUS){ this.explodeBomb(bomb); break; }
+      }
+    }
+  }
+
   countActiveBombs(p){
     // activeBombs is typically just a handful of entries, vs. a ROWS*COLS scan.
-    // Remote bombs are excluded — they're a separate, always-cap-1 pool and
-    // don't eat into a player's normal maxBombs supply.
+    // Remote bombs and mines are excluded — they're each a separate,
+    // always-cap-1 pool and don't eat into a player's normal maxBombs supply.
     let n = 0;
-    for (const bomb of this.activeBombs) if (bomb.owner === p && !bomb.remote) n++;
+    for (const bomb of this.activeBombs) if (bomb.owner === p && !bomb.remote && !bomb.mine) n++;
     return n;
   }
 
@@ -2299,6 +2567,7 @@ class HostScene extends Phaser.Scene {
     const idx = this.activeBombs.indexOf(bomb);
     if (idx !== -1) this.activeBombs.splice(idx, 1);
     if (bomb.remote && bomb.owner.remoteBomb === bomb) bomb.owner.remoteBomb = null;
+    if (bomb.mine && bomb.owner.activeMine === bomb) bomb.owner.activeMine = null;
     bomb.gfx.destroy();
     SFX.explosion();
 
@@ -2330,6 +2599,9 @@ class HostScene extends Phaser.Scene {
           destroyedBlocks.push({ row:r, col:c });
           if (Math.random() < this.scenarioConfig.powerupSpawnChance){
             const roll = Math.random();
+            // Mine gets a deliberately thin 5% slice (borrowed from curse's
+            // share) — it should be a rare, surprising find in the crates,
+            // not a reliable pickup like the others.
             const type = roll < 0.15 ? 'bomb'
                        : roll < 0.30 ? 'flame'
                        : roll < 0.42 ? 'speed'
@@ -2337,6 +2609,7 @@ class HostScene extends Phaser.Scene {
                        : roll < 0.66 ? 'heart'
                        : roll < 0.78 ? 'pierce'
                        : roll < 0.88 ? 'detonator'
+                       : roll < 0.93 ? 'mine'
                        : 'curse';
             const px = c*TILE+TILE/2, py = HUD_H+r*TILE+TILE/2;
             this.powerups[r][c] = { type, gfx: createPowerupVisual(this, px, py, type) };
@@ -2356,7 +2629,7 @@ class HostScene extends Phaser.Scene {
     if (this.recording){
       this.recording.events.push({
         t: Math.round(this.time.now), type:'explode',
-        player: bomb.owner ? bomb.owner.id : null, remote: !!bomb.remote,
+        player: bomb.owner ? bomb.owner.id : null, remote: !!bomb.remote, mine: !!bomb.mine,
         row: bomb.row, col: bomb.col, range: bomb.range, pierce: !!bomb.pierce,
         destroyed: destroyedBlocks, powerups: spawnedPowerups,
       });
@@ -2475,13 +2748,14 @@ class HostScene extends Phaser.Scene {
       const shieldTag = p.shieldCount > 0 ? ` \u{1F6E1}${p.shieldCount}` : '';
       const pierceTag = p.pierce ? ' \u{1F4A5}' : '';
       const detonatorTag = p.hasDetonator ? ' \u{1F4E1}' : '';
+      const mineTag = p.hasMine ? (p.activeMine ? ' \u{1F7E0}' : ' \u26AB') : '';
       const reconnectTag = this.isPendingReconnect(i) ? ' \u23F3' : '';
       // Ping only applies to real network players — solo/bot slots have no
       // connection to measure — and only once a slot's first ping reply has
       // actually landed (net.pingMs[i-1] starts out null).
       const pingVal = (this.controllers[i] === 'remote' && !this.isPendingReconnect(i)) ? net.pingMs[i-1] : null;
       const pingTag = (pingVal != null) ? ` ${pingQualityEmoji(pingVal)}${pingVal}ms` : '';
-      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}${pingTag}` : 'OUT'));
+      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${mineTag}${reconnectTag}${pingTag}` : 'OUT'));
       this.hudTexts[i].setColor(p.alive ? (this.isPendingReconnect(i) ? '#f5b041' : (p.curse ? '#c39bd3' : '#eee')) : '#666');
       // Dim the sprite itself while frozen/pending so it's clear at a glance
       // on the board, not just in the HUD text.
@@ -2490,17 +2764,19 @@ class HostScene extends Phaser.Scene {
   }
 
   buildSnapshot(){
-    const bombsList = this.activeBombs.map(b => ({ row:b.row, col:b.col, remote:!!b.remote }));
+    const bombsList = this.activeBombs.map(b => ({ row:b.row, col:b.col, remote:!!b.remote, mine:!!b.mine }));
     const powerupsList = [];
     for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if (this.powerups[r][c]) powerupsList.push({row:r,col:c,type:this.powerups[r][c].type});
     return {
-      players: this.players.map((p,i) => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse, hasKick:!!p.hasKick, shieldCount:p.shieldCount||0, pierce:!!p.pierce, hasDetonator:!!p.hasDetonator, reconnecting:this.isPendingReconnect(i) })),
+      players: this.players.map((p,i) => ({ row:p.row, col:p.col, alive:p.alive, maxBombs:p.maxBombs, blastRange:p.blastRange, speed:p.speed, cursed:!!p.curse, hasKick:!!p.hasKick, shieldCount:p.shieldCount||0, pierce:!!p.pierce, hasDetonator:!!p.hasDetonator, hasMine:!!p.hasMine, mineArmed:!!p.activeMine, reconnecting:this.isPendingReconnect(i) })),
       bombs: bombsList,
       explosions: this.explosionVisuals.map(ev => ({ row:ev.row, col:ev.col, up:ev.arm.up, down:ev.arm.down, left:ev.arm.left, right:ev.arm.right })),
       blocksGrid: this.blocksGridBool,
       powerups: powerupsList,
       elapsed: this.frozenElapsed,
       pings: net.pingMs.slice(),
+      arena: this.shrinkingArena ? this.arenaBounds : null,
+      isNight: this.dayNightCycle ? this.isNight : null,
       over: this.gameOver ? { winner: (this.players.find(p=>p.alive) || {}).id } : null
     };
   }
@@ -2524,7 +2800,34 @@ class HostScene extends Phaser.Scene {
     if (!this.gameOver) this.frozenElapsed = Date.now() - this.matchStartTime;
     this.timerText.setText(formatMatchTime(this.frozenElapsed));
     this.checkFlameDamage(time);
+    this.checkMines(time);
     for (const bomb of this.activeBombs) updateBombVisual(bomb.gfx, bomb.placedAt, time);
+
+    if (this.shrinkingArena && !this.gameOver){
+      if (Date.now() >= this.nextShrinkAt){
+        if (shrinkArenaBounds(this.arenaBounds)) SFX.explosion(); // reuse an existing cue as a rumble/warning sound
+        this.nextShrinkAt = Date.now() + SHRINK_INTERVAL_MS;
+      }
+      const b = this.arenaBounds;
+      for (const p of this.players){
+        if (!p.alive) continue;
+        if (p.invulnerableUntil && time < p.invulnerableUntil) continue;
+        if (p.row < b.minR || p.row > b.maxR || p.col < b.minC || p.col > b.maxC) this.hitPlayer(p, time);
+      }
+      updateArenaOverlay(this.arenaGfx, this.arenaBounds);
+    }
+    if (this.dayNightCycle && !this.gameOver){
+      const elapsed = Date.now() - this.matchStartTime;
+      const wasNight = this.isNight;
+      this.isNight = Math.floor(elapsed / DAY_NIGHT_PHASE_MS) % 2 === 1;
+      if (this.isNight !== wasNight){
+        this.dayNightText.setText(this.isNight ? '\u{1F319} Night' : '\u2600\uFE0F Day');
+        SFX.powerup(); // reuse an existing cue as a phase-change chime
+      }
+    }
+    const fogActive = this.fogOfWar || (this.dayNightCycle && this.isNight);
+    if (fogActive) updateFogOverlay(this.fogGfx, this.players[0]);
+    else if (this.fogGfx) this.fogGfx.clear();
 
     if (Phaser.Input.Keyboard.JustDown(this.keyR)){ this.scene.restart(); this.gameOver=false; return; }
 
@@ -2537,12 +2840,13 @@ class HostScene extends Phaser.Scene {
         updateCurseRingVisual(p, time);
         updateShieldRingVisual(p);
 
-        let dir, bombPressed, kickPressed = false, detonatePressed = false;
+        let dir, bombPressed, kickPressed = false, detonatePressed = false, minePressed = false;
         if (i === 0){
           dir = readLocalDirection(this.localKeys);
           bombPressed = localBombJustPressed(this.localKeys);
           kickPressed = localKickJustPressed(this.localKeys);
           detonatePressed = localDetonateJustPressed(this.localKeys);
+          minePressed = localMineJustPressed(this.localKeys);
         } else if (this.controllers[i] === 'bot'){
           const action = botDecide(this, i, time);
           dir = action.dir;
@@ -2553,6 +2857,7 @@ class HostScene extends Phaser.Scene {
           if (this.remoteBombQueue[i] > 0){ this.remoteBombQueue[i]--; bombPressed = true; }
           if (this.remoteKickQueue[i] > 0){ this.remoteKickQueue[i]--; kickPressed = true; }
           if (this.remoteDetonateQueue[i] > 0){ this.remoteDetonateQueue[i]--; detonatePressed = true; }
+          if (this.remoteMineQueue[i] > 0){ this.remoteMineQueue[i]--; minePressed = true; }
         }
 
         if (p.curse && p.curse.type === 'reverse'){
@@ -2566,6 +2871,7 @@ class HostScene extends Phaser.Scene {
         if (bombPressed) this.placeBomb(p);
         if (kickPressed) this.doKick(p);
         if (detonatePressed) this.detonate(p);
+        if (minePressed) this.placeMine(p);
 
         if (this.playerMoving[i]) continue;
         if (time - this.playerMoveTime[i] < playerMoveInterval(p)) continue;
@@ -2609,6 +2915,17 @@ class ClientScene extends Phaser.Scene {
     const hud = buildHUD(this, NET_NUM_PLAYERS);
     this.hudTexts = hud.hudTexts; this.winText = hud.winText; this.timerText = hud.timerText;
 
+    // Fog of War / Shrinking Arena / Day-Night Cycle: purely visual here —
+    // the host is authoritative for both what's actually visible-worthy
+    // (fog is only ever cosmetic anyway) and, for the arena, which bounds
+    // are safe and who it hurts. This scene just renders whatever it's told.
+    this.fogGfx = (NET_FOG_OF_WAR || NET_DAY_NIGHT_CYCLE) ? createFogOverlay(this) : null;
+    this.arenaGfx = NET_SHRINKING_ARENA ? createArenaOverlay(this) : null;
+    this.isNight = false;
+    this.dayNightText = NET_DAY_NIGHT_CYCLE
+      ? this.add.text(10*UI_SCALE, HUD_H + 10*UI_SCALE, '\u2600\uFE0F Day', { fontSize:Math.round(14*UI_SCALE)+'px', color:'#ffe9a8', fontStyle:'bold' }).setDepth(950)
+      : null;
+
     this.bombGfxMap = {};
     this.bombPlacedMap = {};
     this.explosionVisualMap = {}; // key "row,col" (bomb origin) -> {gfx, createdAt}
@@ -2650,19 +2967,20 @@ class ClientScene extends Phaser.Scene {
       }
       p.maxBombs = pd.maxBombs; p.blastRange = pd.blastRange; p.speed = pd.speed; p.cursed = pd.cursed;
       p.hasKick = !!pd.hasKick; p.shieldCount = pd.shieldCount||0;
-      p.pierce = !!pd.pierce; p.hasDetonator = !!pd.hasDetonator;
+      p.pierce = !!pd.pierce; p.hasDetonator = !!pd.hasDetonator; p.hasMine = !!pd.hasMine; p.mineArmed = !!pd.mineArmed;
       updateShieldRingVisual(p);
       const curseTag = pd.cursed ? ' \u{1F480}' : '';
       const kickTag = pd.hasKick ? ' \u{1F45F}' : '';
       const shieldTag = pd.shieldCount > 0 ? ` \u{1F6E1}${pd.shieldCount}` : '';
       const pierceTag = pd.pierce ? ' \u{1F4A5}' : '';
       const detonatorTag = pd.hasDetonator ? ' \u{1F4E1}' : '';
+      const mineTag = pd.hasMine ? (pd.mineArmed ? ' \u{1F7E0}' : ' \u26AB') : '';
       const reconnectTag = pd.reconnecting ? ' \u23F3' : '';
       // data.pings is indexed by host slot (player index - 1); player 0 is
       // always the host itself, which has no connection to measure.
       const pingVal = (i > 0 && data.pings) ? data.pings[i-1] : null;
       const pingTag = (pingVal != null && !pd.reconnecting) ? ` ${pingQualityEmoji(pingVal)}${pingVal}ms` : '';
-      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${reconnectTag}${pingTag}` : 'OUT'));
+      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${mineTag}${reconnectTag}${pingTag}` : 'OUT'));
       this.hudTexts[i].setColor(pd.alive ? (pd.reconnecting ? '#f5b041' : (pd.cursed ? '#c39bd3' : '#eee')) : '#666');
       if (pd.alive) p.container.setAlpha(pd.reconnecting ? 0.55 : 1);
     });
@@ -2686,7 +3004,7 @@ class ClientScene extends Phaser.Scene {
       if (!this.bombGfxMap[key]){
         SFX.bombPlaced();
         const x = b.col*TILE+TILE/2, y = HUD_H+b.row*TILE+TILE/2;
-        this.bombGfxMap[key] = createBombVisual(this, x, y, b.remote);
+        this.bombGfxMap[key] = createBombVisual(this, x, y, b.remote, b.mine);
         // Client doesn't know the real placement time from the host, so it
         // approximates "now" as the fuse start; this is off by at most one
         // network round-trip, which isn't visually noticeable.
@@ -2720,6 +3038,13 @@ class ClientScene extends Phaser.Scene {
       }
     });
 
+    if (NET_SHRINKING_ARENA) updateArenaOverlay(this.arenaGfx, data.arena);
+    if (NET_DAY_NIGHT_CYCLE){
+      const wasNight = this.isNight;
+      this.isNight = !!data.isNight;
+      if (this.isNight !== wasNight) this.dayNightText.setText(this.isNight ? '\u{1F319} Night' : '\u2600\uFE0F Day');
+    }
+
     if (data.over && !this.gameOver){
       this.gameOver = true;
       this.winText.setText(`Player ${data.over.winner+1} wins!`);
@@ -2740,18 +3065,21 @@ class ClientScene extends Phaser.Scene {
       const ev = this.explosionVisualMap[key];
       updateExplosionFlameVisual(ev.gfx, ev.createdAt, time);
     }
+    if (NET_FOG_OF_WAR || (NET_DAY_NIGHT_CYCLE && this.isNight)) updateFogOverlay(this.fogGfx, this.players[net.myIndex]);
+    else if (this.fogGfx) this.fogGfx.clear();
     const dir = readLocalDirection(this.localKeys);
     const bombPressed = localBombJustPressed(this.localKeys);
     const kickPressed = localKickJustPressed(this.localKeys);
     const detonatePressed = localDetonateJustPressed(this.localKeys);
+    const minePressed = localMineJustPressed(this.localKeys);
     this.sendTimer += delta;
 
     const changed = !this.lastSentMove ||
       dir.up !== this.lastSentMove.up || dir.down !== this.lastSentMove.down ||
       dir.left !== this.lastSentMove.left || dir.right !== this.lastSentMove.right;
 
-    if (changed || bombPressed || kickPressed || detonatePressed || this.sendTimer > 250){
-      net.sendInput({ up:dir.up, down:dir.down, left:dir.left, right:dir.right, bombPressed, kickPressed, detonatePressed });
+    if (changed || bombPressed || kickPressed || detonatePressed || minePressed || this.sendTimer > 250){
+      net.sendInput({ up:dir.up, down:dir.down, left:dir.left, right:dir.right, bombPressed, kickPressed, detonatePressed, minePressed });
       this.lastSentMove = dir;
       this.sendTimer = 0;
     }
@@ -3044,12 +3372,74 @@ function renderScenarioList(){
       card.classList.add('selected');
       document.getElementById('map-desc').textContent = s.desc;
       regenerateMapSeed();
+      renderMapParams();
     };
     list.appendChild(card);
   });
   document.getElementById('map-desc').textContent = (SCENARIOS[SELECTED_SCENARIO] || SCENARIOS.standard).desc;
 }
 renderScenarioList();
+
+// ---- Map parameters panel: readonly summary for every built-in map, or an
+// editable form for the 'custom' map (which live-writes into SCENARIOS.custom
+// so starting a game just reads it like any other scenario). ----
+function renderMapParams(){
+  const s = SCENARIOS[SELECTED_SCENARIO] || SCENARIOS.standard;
+  const readonly = document.getElementById('map-params-readonly');
+  const custom = document.getElementById('map-params-custom');
+  if (s.isCustom){
+    readonly.classList.add('hidden');
+    custom.classList.remove('hidden');
+    return;
+  }
+  custom.classList.add('hidden');
+  readonly.classList.remove('hidden');
+  readonly.innerHTML = '';
+  const rows = [
+    ['Pillars', s.pillars ? 'Yes' : 'No'],
+    ['Crate density', Math.round(s.blockFillChance*100) + '%'],
+    ['Power-up chance', Math.round(s.powerupSpawnChance*100) + '%'],
+  ];
+  if (s.teleporterPairs) rows.push(['Teleporter pairs', String(s.teleporterPairs)]);
+  if (s.fuseMult && s.fuseMult !== 1) rows.push(['Fuse speed', s.fuseMult + '\u00D7']);
+  if (s.extraBlastRange) rows.push(['Extra blast range', '+' + s.extraBlastRange]);
+  rows.push(['Fog of War', s.fogOfWar ? 'Yes' : 'No']);
+  rows.push(['Shrinking Arena', s.shrinkingArena ? 'Yes' : 'No']);
+  rows.push(['Day/Night Cycle', s.dayNightCycle ? 'Yes' : 'No']);
+  rows.forEach(([label, val]) => {
+    const row = document.createElement('div');
+    row.className = 'map-param-row';
+    const l = document.createElement('span'); l.textContent = label;
+    const v = document.createElement('span'); v.textContent = val;
+    row.append(l, v);
+    readonly.appendChild(row);
+  });
+}
+
+// Writes the current form values into SCENARIOS.custom, which is exactly
+// what startSoloGame/doHostGame read from once 'custom' is the selected
+// scenario — no separate storage or start-time translation needed.
+function applyCustomParamsFromForm(){
+  const c = SCENARIOS.custom;
+  c.pillars = document.getElementById('cp-pillars').checked;
+  c.blockFillChance = Math.min(1, Math.max(0, parseFloat(document.getElementById('cp-blockfill').value)));
+  if (isNaN(c.blockFillChance)) c.blockFillChance = 0.7;
+  c.powerupSpawnChance = Math.min(1, Math.max(0, parseFloat(document.getElementById('cp-powerup').value)));
+  if (isNaN(c.powerupSpawnChance)) c.powerupSpawnChance = 0.35;
+  c.teleporterPairs = Math.max(0, parseInt(document.getElementById('cp-teleporters').value, 10) || 0);
+  c.fuseMult = parseFloat(document.getElementById('cp-fusemult').value);
+  if (isNaN(c.fuseMult) || c.fuseMult <= 0) c.fuseMult = 1;
+  c.extraBlastRange = Math.max(0, parseInt(document.getElementById('cp-blastrange').value, 10) || 0);
+  c.fogOfWar = document.getElementById('cp-fog').checked;
+  c.shrinkingArena = document.getElementById('cp-shrink').checked;
+  c.dayNightCycle = document.getElementById('cp-daynight').checked;
+  if (SELECTED_SCENARIO === 'custom') regenerateMapSeed();
+}
+['cp-pillars','cp-blockfill','cp-powerup','cp-teleporters','cp-fusemult','cp-blastrange','cp-fog','cp-shrink','cp-daynight']
+  .forEach(id => document.getElementById(id).addEventListener('change', applyCustomParamsFromForm));
+applyCustomParamsFromForm(); // seed SCENARIOS.custom from the form's own default values
+renderMapParams();
+
 
 // The seed shown here reproduces this exact crate/teleporter layout (for
 // the same scenario, map size, and player count) — copy it to share a map,
@@ -3189,6 +3579,9 @@ net.onStart = data => {
   NET_BLOCKS_GRID = data.blocksGrid;
   NET_PILLARS = data.pillars !== false;
   NET_TELEPORTERS = data.teleporters || [];
+  NET_FOG_OF_WAR = !!data.fogOfWar;
+  NET_SHRINKING_ARENA = !!data.shrinkingArena;
+  NET_DAY_NIGHT_CYCLE = !!data.dayNightCycle;
   COLS = data.cols; ROWS = data.rows; SPAWNS = buildSpawns();
   applySpeedSetting(data.speed);
   showGameUI();
