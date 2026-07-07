@@ -16,33 +16,59 @@
 
   #lobby { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:20px; box-sizing:border-box; }
   #lobby h1 { margin:0 0 8px; font-size:26px; }
-  #lobby-choice, #lobby-status, #options-panel, #scenario-panel { background:#1b1f24; border:1px solid #2a2f37; border-radius:12px; padding:24px; width:min(360px, 90vw); text-align:center; }
-  #lobby-choice button, #lobby-status button, #options-panel button { width:100%; padding:12px; margin:6px 0; border:none; border-radius:8px; font-size:15px; cursor:pointer; background:#3498db; color:#fff; }
-  #lobby-choice .or { color:#777; margin:10px 0; font-size:13px; }
-  #btn-options { background:#3a4048 !important; }
-  #btn-custom-solo { background:#8e44ad !important; }
-  #options-panel h2, #scenario-panel h2 { margin:0 0 14px; font-size:18px; }
-  #scenario-panel { max-height:80vh; overflow-y:auto; box-sizing:border-box; }
-  #scenario-list { margin-bottom:6px; }
-  .scenario-card { background:#0e1013; border:1px solid #2a2f37; border-radius:10px; padding:14px; margin:0 0 12px; text-align:left; }
-  .scenario-title { font-weight:600; font-size:15px; margin-bottom:4px; color:#eee; }
-  .scenario-desc { font-size:12px; color:#999; margin:0 0 10px; line-height:1.4; }
-  .scenario-card button { width:100%; padding:10px; border:none; border-radius:8px; font-size:14px; cursor:pointer; background:#2ecc71; color:#0b1f13; font-weight:600; }
-  #btn-scenario-back { width:100%; padding:12px; margin:6px 0; border:none; border-radius:8px; font-size:15px; cursor:pointer; background:#3a4048; color:#fff; }
+  #lobby-status, #options-panel { background:#1b1f24; border:1px solid #2a2f37; border-radius:12px; padding:24px; width:min(360px, 90vw); text-align:center; box-sizing:border-box; }
+  #lobby-status button, #options-panel button { width:100%; padding:12px; margin:6px 0; border:none; border-radius:8px; font-size:15px; cursor:pointer; background:#3498db; color:#fff; }
+  #btn-copy { background:#555; color:#fff; width:100%; padding:9px; margin:4px 0; border:none; border-radius:6px; font-size:13px; cursor:pointer; }
+  #options-panel h2 { margin:0 0 14px; font-size:18px; }
+
+  /* ---- Single-screen lobby: map picker + mode picker side by side ---- */
+  #lobby-main { position:relative; background:#1b1f24; border:1px solid #2a2f37; border-radius:12px; padding:24px; width:min(760px, 96vw); max-height:88vh; overflow-y:auto; box-sizing:border-box; text-align:left; }
+  #btn-options { position:absolute; top:14px; right:14px; width:36px; height:36px; padding:0; margin:0; border:none; border-radius:50%; background:#3a4048; color:#fff; font-size:16px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .lobby-grid { display:grid; grid-template-columns:1.6fr 1fr; gap:28px; }
+  @media (max-width:640px){ .lobby-grid { grid-template-columns:1fr; } }
+  .col-label { font-size:12px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin:0 0 10px; }
+
+  .map-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+  .map-card { background:#0e1013; border:2px solid #2a2f37; border-radius:10px; padding:10px 12px; cursor:pointer; }
+  .map-card.selected { border-color:#2ecc71; }
+  .map-card-title { font-weight:600; font-size:13px; color:#eee; margin-bottom:2px; }
+  .map-card-hint { font-size:11px; color:#888; line-height:1.35; }
+  #map-desc { font-size:12px; color:#999; margin-top:12px; line-height:1.4; min-height:32px; }
+  #map-seed-row { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12px; color:#888; }
+  .map-seed-label { color:#666; }
+  #map-seed-value { background:#0e1013; border:1px solid #2a2f37; border-radius:6px; padding:3px 8px; color:#2ecc71; font-family:monospace; font-size:12px; letter-spacing:0.5px; cursor:pointer; }
+  #btn-reroll-seed { border:none; background:transparent; color:#888; font-size:15px; cursor:pointer; padding:2px 4px; line-height:1; }
+  #btn-reroll-seed:hover { color:#eee; }
+  #map-seed-copied { color:#2ecc71; }
+  #map-seed-input { background:#0e1013; border:1px solid #2a2f37; border-radius:6px; padding:3px 8px; color:#eee; font-family:monospace; font-size:12px; width:100px; box-sizing:border-box; }
+  #map-seed-input::placeholder { color:#555; font-family:system-ui, sans-serif; }
+  #btn-apply-seed { border:none; background:#3a4048; color:#ccc; font-size:11px; padding:4px 9px; border-radius:6px; cursor:pointer; }
+  #btn-apply-seed:hover { background:#454c56; color:#fff; }
+
+  .mode-col { display:flex; flex-direction:column; }
+  .mode-toggle { display:flex; background:#0e1013; border-radius:8px; padding:3px; margin-bottom:14px; }
+  .mode-btn { flex:1; padding:8px 0; border:none; border-radius:6px; background:transparent; color:#999; font-size:13px; cursor:pointer; }
+  .mode-btn.active { background:#262b32; color:#fff; box-shadow:0 0 0 1px #333; }
+  .mode-extra { margin-bottom:14px; }
+  #bot-count-row { display:flex; align-items:center; gap:8px; font-size:13px; color:#aaa; }
+  #bot-count-row select { padding:5px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
+  #join-code { width:100%; box-sizing:border-box; padding:10px; border-radius:8px; border:1px solid #333; background:#0e1013; color:#eee; font-size:14px; text-align:center; }
+  .mode-spacer { flex:1; min-height:10px; }
+  #host-panel { width:100%; box-sizing:border-box; }
+  #btn-play { width:100%; padding:13px; margin:0; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; background:#3498db; color:#fff; }
+  #btn-start { width:100%; padding:13px; margin:8px 0 0; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; background:#2ecc71; color:#0b1f13; }
+
   .option-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 14px; font-size:14px; color:#ccc; text-align:left; }
   .option-row select { flex:0 0 auto; padding:6px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
   .option-row input[type="text"] { flex:0 0 auto; width:140px; box-sizing:border-box; padding:6px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; text-align:right; }
   #options-hint { font-size:12px; color:#888; margin:-6px 0 14px; text-align:left; }
-  #bot-count-row { display:flex; align-items:center; justify-content:center; gap:8px; margin:-2px 0 6px; font-size:13px; color:#aaa; }
-  #bot-count-row select { padding:5px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
-  #join-code { width:100%; box-sizing:border-box; padding:10px; border-radius:8px; border:1px solid #333; background:#0e1013; color:#eee; font-size:14px; margin-bottom:6px; text-align:center; }
-  #room-code-display { font-size:28px; font-weight:bold; letter-spacing:1px; background:#0e1013; border-radius:8px; padding:12px; margin-bottom:10px; word-break:break-all; }
+  #room-code-display { font-size:20px; font-weight:bold; letter-spacing:1px; background:#0e1013; border-radius:8px; padding:10px; margin-bottom:10px; text-align:center; word-break:break-all; }
   #qr-code { display:flex; justify-content:center; margin:0 0 10px; }
   #qr-code img, #qr-code canvas { border-radius:8px; background:#fff; padding:8px; }
-  #qr-hint { font-size:12px; color:#888; margin:-4px 0 10px; }
-  #btn-copy { background:#555 !important; }
-  #player-list { text-align:left; font-size:14px; margin:10px 0; color:#bbb; }
+  #qr-hint { font-size:11px; color:#888; margin:-4px 0 10px; text-align:center; }
+  #player-list { text-align:left; font-size:13px; margin:10px 0; color:#bbb; }
   #lobby-msg { font-size:13px; color:#e67e22; min-height:16px; margin-top:6px; }
+  #host-msg { font-size:13px; color:#e67e22; min-height:16px; margin-top:6px; }
 
   #game-wrap { display:flex; flex-direction:column; align-items:center; width:100vw; height:100vh; height:100dvh; box-sizing:border-box; }
   #game { flex:1 1 auto; width:100%; min-height:0; overflow:hidden; position:relative; }
@@ -66,8 +92,12 @@
 
   #btn-export { position:fixed; top:10px; right:10px; z-index:20; padding:9px 14px; border:none; border-radius:8px; background:#2ecc71; color:#0b1f13; font-size:13px; font-weight:600; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.4); }
   #btn-export:active { background:#27ae60; }
-  #btn-fullscreen { position:fixed; top:10px; left:10px; z-index:20; width:40px; height:40px; padding:0; border:none; border-radius:8px; background:rgba(255,255,255,0.14); color:#fff; font-size:18px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; }
+  #top-left-controls { position:fixed; top:10px; left:10px; z-index:20; display:flex; align-items:center; gap:8px; }
+  #btn-fullscreen { width:40px; height:40px; padding:0; border:none; border-radius:8px; background:rgba(255,255,255,0.14); color:#fff; font-size:18px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; }
   #btn-fullscreen:active { background:rgba(255,255,255,0.28); }
+  #game-seed-display { display:flex; align-items:center; gap:6px; background:rgba(14,16,19,0.75); border:1px solid #2a2f37; border-radius:8px; padding:8px 10px; font-size:12px; color:#888; box-shadow:0 2px 6px rgba(0,0,0,0.4); cursor:pointer; }
+  #game-seed-display span#game-seed-value { color:#2ecc71; font-family:monospace; font-size:12px; letter-spacing:0.5px; }
+  #game-seed-display #game-seed-copied { color:#2ecc71; }
 </style>
 </head>
 <body>
@@ -75,31 +105,62 @@
 <div id="lobby">
   <h1>Maze Blaster Online</h1>
 
-  <div id="lobby-choice">
-    <button id="btn-solo">Play Solo (no network)</button>
-    <div id="bot-count-row">
-      <label for="bot-count">Bots:</label>
-      <select id="bot-count">
-        <option value="0">0</option>
-        <option value="1" selected>1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-      </select>
-    </div>
-    <button id="btn-custom-solo">🗺 Play Custom Solo (choose map)</button>
-    <div class="or">— or —</div>
-    <button id="btn-host">Host Game</button>
-    <div class="or">— or —</div>
-    <input id="join-code" placeholder="Enter room code">
-    <button id="btn-join">Join Game</button>
-    <div class="or">— or —</div>
-    <button id="btn-options">⚙ Options</button>
-  </div>
+  <div id="lobby-main">
+    <button id="btn-options" title="Options">⚙</button>
 
-  <div id="scenario-panel" class="hidden">
-    <h2>Choose a Map</h2>
-    <div id="scenario-list"></div>
-    <button id="btn-scenario-back">Back</button>
+    <div class="lobby-grid" id="lobby-grid">
+      <div class="map-col">
+        <div class="col-label">Map</div>
+        <div id="scenario-list" class="map-grid"></div>
+        <div id="map-desc"></div>
+        <div id="map-seed-row">
+          <span class="map-seed-label">Seed</span>
+          <span id="map-seed-value" title="Click to copy"></span>
+          <button id="btn-reroll-seed" title="New seed" aria-label="New seed">⟳</button>
+          <span id="map-seed-copied" class="hidden">Copied!</span>
+          <input id="map-seed-input" placeholder="Paste seed" maxlength="24">
+          <button id="btn-apply-seed" title="Use this seed">Use</button>
+        </div>
+      </div>
+
+      <div class="mode-col">
+        <div class="col-label">Mode</div>
+        <div class="mode-toggle">
+          <button class="mode-btn" data-mode="solo">Solo</button>
+          <button class="mode-btn" data-mode="host">Host</button>
+          <button class="mode-btn" data-mode="join">Join</button>
+        </div>
+
+        <div id="mode-extra-solo" class="mode-extra">
+          <div id="bot-count-row">
+            <label for="bot-count">Bots:</label>
+            <select id="bot-count">
+              <option value="0">0</option>
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="mode-extra-join" class="mode-extra hidden">
+          <input id="join-code" placeholder="Enter room code">
+        </div>
+
+        <div id="mode-spacer" class="mode-spacer">
+          <div id="host-panel" class="hidden">
+            <div id="room-code-display"></div>
+            <div id="qr-code" class="hidden"></div>
+            <div id="qr-hint" class="hidden">Scan to join automatically</div>
+            <button id="btn-copy" class="hidden">Copy code</button>
+            <div id="player-list"></div>
+            <div id="host-msg"></div>
+          </div>
+        </div>
+        <button id="btn-play">Play Solo</button>
+        <button id="btn-start" class="hidden">Start Game</button>
+      </div>
+    </div>
   </div>
 
   <div id="options-panel" class="hidden">
@@ -140,12 +201,6 @@
   </div>
 
   <div id="lobby-status" class="hidden">
-    <div id="room-code-display"></div>
-    <div id="qr-code" class="hidden"></div>
-    <div id="qr-hint" class="hidden">Scan to join automatically</div>
-    <button id="btn-copy" class="hidden">Copy code</button>
-    <div id="player-list"></div>
-    <button id="btn-start" class="hidden">Start Game</button>
     <div id="lobby-msg"></div>
   </div>
 </div>
@@ -156,7 +211,13 @@
   <div id="hint">Move: WASD / Arrows &nbsp;|&nbsp; Bomb: Space/Enter &nbsp;|&nbsp; Kick: K &nbsp;|&nbsp; Remote Bomb: F (place / detonate) &nbsp;|&nbsp; Host presses R to restart</div>
 </div>
 <button id="btn-export" class="hidden">⬇ Export moves (JSON)</button>
-<button id="btn-fullscreen" class="hidden" title="Toggle fullscreen">⛶</button>
+<div id="top-left-controls">
+  <button id="btn-fullscreen" class="hidden" title="Toggle fullscreen">⛶</button>
+  <div id="game-seed-display" class="hidden" title="Click to copy seed">
+    <span id="game-seed-value"></span>
+    <span id="game-seed-copied" class="hidden">Copied!</span>
+  </div>
+</div>
 
 <div id="touch-controls" class="hidden">
   <div id="dpad">
@@ -221,13 +282,11 @@ const MAP_SIZES = {
   xlarge:  { cols:19, rows:15 },
 };
 let SELECTED_MAP_SIZE = 'default'; // set from the Options menu, applied when a game starts
-// ---- Scenario ("Play Custom Solo") option -----------------------------
 // A scenario tweaks how the board is generated: whether the indestructible
 // pillar grid is present, how many tiles get a destructible crate, and how
-// likely a destroyed crate is to drop a power-up.
-// Solo-only for now — hosted/joined multiplayer always uses 'standard',
-// since ClientScene independently rebuilds the solid-wall grid and isn't
-// (yet) told which scenario the host picked.
+// likely a destroyed crate is to drop a power-up. The host generates the
+// board and broadcasts the layout (crate grid, pillar flag, teleporter
+// pairs), so any scenario works for Solo, Host, or Join alike.
 const SCENARIOS = {
   standard:        { label:'Standard',        desc:'The classic maze — indestructible pillars plus destructible crates.', pillars:true,  blockFillChance:0.7,  powerupSpawnChance:0.35 },
   open_arena:      { label:'Open Arena',      desc:'No pillars — just the border and crates. Fast, open, and chaotic.',    pillars:false, blockFillChance:0.7,  powerupSpawnChance:0.35 },
@@ -237,6 +296,40 @@ const SCENARIOS = {
   teleporters:     { label:'Teleporters',     desc:'A few glowing portal pairs are scattered on the maze — step on one to instantly warp to its match.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, teleporterPairs:2 },
 };
 let SELECTED_SCENARIO = 'standard'; // set by the map picker, applied when a Solo game starts
+
+// ---- Deterministic map seed --------------------------------------------
+// Turns an arbitrary string into a reproducible board layout: the same seed
+// always yields the same crate/teleporter placement for a given scenario,
+// map size, and player count. xmur3 hashes the string down to a 32-bit
+// int; mulberry32 is a small, fast seeded PRNG driven by that int. Only
+// board-shape randomness (crate fill, teleporter placement) is seeded —
+// in-match randomness (power-up drops, bot decisions) stays on Math.random
+// so replaying a seed reproduces the map, not a scripted match.
+function xmur3(str){
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function(){
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return h >>> 0;
+  };
+}
+function mulberry32(seed){
+  let a = seed;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function seededRng(str){ return mulberry32(xmur3(String(str))()); }
+function randomSeedString(){ return Math.random().toString(36).slice(2, 8).toUpperCase(); }
+let MAP_SEED = randomSeedString(); // shown (read-only) in the map picker so a layout can be shared/reproduced
 // A handful of UI elements (fonts, dot radii, stroke widths, offsets) are
 // specified in fixed pixels rather than as a fraction of TILE. UI_SCALE
 // keeps those visually proportional to TILE.
@@ -1780,7 +1873,10 @@ function playerDisplayName(i){
 let NET_NUM_PLAYERS = 1;
 let NET_BOT_COUNT = 0; // solo mode only: players 1..NET_BOT_COUNT are AI-controlled
 let NET_BLOCKS_GRID = null;
+let NET_PILLARS = true;     // client-side mirror of the host's scenario.pillars flag
+let NET_TELEPORTERS = [];   // client-side mirror of the host's _teleporterPairsList (visuals only)
 let NET_IS_SOLO = false;    // true only for "Play Solo" runs — enables move recording/export
+let MATCH_SEED_CONSUMED = false; // reset to false whenever a fresh match is (re)launched from the lobby
 let activeHostScene = null; // reference to the live HostScene instance, for the export button
 let currentGame = null; // reference to the live Phaser.Game instance, so we can force a re-fit on resize/rotate
 window.addEventListener('resize', () => { if (currentGame) currentGame.scale.refresh(); });
@@ -1794,6 +1890,15 @@ class HostScene extends Phaser.Scene {
     const scenario = SCENARIOS[SELECTED_SCENARIO] || SCENARIOS.standard;
     this.scenario = SELECTED_SCENARIO;
     this.scenarioConfig = scenario;
+    // The very first create() of a match uses the seed shown/copied in the
+    // lobby, so that seed reliably reproduces this exact layout. Restarting
+    // mid-session (R) re-rolls a fresh seed each time, same as the old
+    // unseeded behavior, so restarts still give you a new map rather than
+    // replaying the same one.
+    this.currentSeed = MATCH_SEED_CONSUMED ? randomSeedString() : MAP_SEED;
+    this.rng = seededRng(this.currentSeed);
+    MATCH_SEED_CONSUMED = true;
+    updateGameSeedDisplay(this.currentSeed);
     // BOMB_FUSE was already set fresh for this match by applySpeedSetting()
     // just before the scene was created, so scaling it here on top is safe —
     // it can't compound across matches or scenarios.
@@ -1839,7 +1944,7 @@ class HostScene extends Phaser.Scene {
         }
       }
       for (let k = candidates.length - 1; k > 0; k--){
-        const j = Math.floor(Math.random() * (k+1));
+        const j = Math.floor(this.rng() * (k+1));
         [candidates[k], candidates[j]] = [candidates[j], candidates[k]];
       }
       const pairCount = Math.min(scenario.teleporterPairs, Math.floor(candidates.length / 2));
@@ -1865,7 +1970,7 @@ class HostScene extends Phaser.Scene {
         if (!this.teleporters[r][c]) continue;
         const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
         for (let k = dirs.length - 1; k > 0; k--){
-          const j = Math.floor(Math.random() * (k+1));
+          const j = Math.floor(this.rng() * (k+1));
           [dirs[k], dirs[j]] = [dirs[j], dirs[k]];
         }
         for (const [dr, dc] of dirs){
@@ -1883,7 +1988,7 @@ class HostScene extends Phaser.Scene {
         if (protectedCells.has(r+','+c)) continue;
         if (this.teleporters[r][c]) continue;
         if (keepClear.has(r+','+c)) continue;
-        if (Math.random() < scenario.blockFillChance){
+        if (this.rng() < scenario.blockFillChance){
           this.blocks[r][c] = drawBlock(this, r, c);
           this.blocksGridBool[r][c] = true;
         }
@@ -1988,15 +2093,21 @@ class HostScene extends Phaser.Scene {
     this.gameOver = false;
     this.lastBroadcast = 0;
 
-    // Match timer: measured against the scene's own clock (this.time.now),
-    // which restarts fresh whenever the scene does (R to restart), so a
-    // rematch always starts back at 0:00. Frozen at whatever value it hit
-    // once the match ends, both on-screen (this.timerText) and in the
-    // broadcast snapshot, so clients' clocks stop in sync with the host's.
-    this.matchStartTime = this.time.now;
+    // Match timer: measured against the wall clock (Date.now()) rather than
+    // this.time.now. Phaser's scene clock is NOT guaranteed to reset to 0
+    // when a scene restarts (this.scene.restart()) — it can carry over time
+    // already elapsed since the Game booted, including any time the user
+    // spent sitting in the lobby before ever pressing Play. That previously
+    // made the on-screen timer start already showing several seconds
+    // elapsed instead of 0:00. Date.now() captured fresh right here, at the
+    // moment the match actually begins, sidesteps that entirely. Frozen at
+    // whatever value it hit once the match ends, both on-screen
+    // (this.timerText) and in the broadcast snapshot, so clients' clocks
+    // stop in sync with the host's.
+    this.matchStartTime = Date.now();
     this.frozenElapsed = 0;
 
-    net.broadcastStart({ blocksGrid: this.blocksGridBool, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED });
+    net.broadcastStart({ blocksGrid: this.blocksGridBool, pillars: !!scenario.pillars, teleporters: this._teleporterPairsList, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED, seed: this.currentSeed });
   }
 
   // Walls and destructible blocks always block movement, regardless of any
@@ -2318,7 +2429,7 @@ class HostScene extends Phaser.Scene {
   endGame(){
     if (this.gameOver) return;
     this.gameOver = true;
-    this.frozenElapsed = this.time.now - this.matchStartTime;
+    this.frozenElapsed = Date.now() - this.matchStartTime;
     if (this.recording){
       const winner = this.players.find(p => p.alive);
       this.recording.events.push({ t: Math.round(this.time.now), type:'gameOver', winner: winner ? winner.id : null });
@@ -2410,7 +2521,7 @@ class HostScene extends Phaser.Scene {
       }
     }
     this.updateHUD();
-    if (!this.gameOver) this.frozenElapsed = time - this.matchStartTime;
+    if (!this.gameOver) this.frozenElapsed = Date.now() - this.matchStartTime;
     this.timerText.setText(formatMatchTime(this.frozenElapsed));
     this.checkFlameDamage(time);
     for (const bomb of this.activeBombs) updateBombVisual(bomb.gfx, bomb.placedAt, time);
@@ -2476,13 +2587,23 @@ class ClientScene extends Phaser.Scene {
   constructor(){ super('client'); }
 
   create(){
-    this.solid = buildStaticBoard(this);
+    this.solid = buildStaticBoard(this, NET_PILLARS);
     this.blocksGridBool = NET_BLOCKS_GRID.map(row => row.slice());
     this.blockRects = [];
     for (let r=0;r<ROWS;r++){
       this.blockRects.push(new Array(COLS).fill(null));
       for (let c=0;c<COLS;c++) if (this.blocksGridBool[r][c]) this.blockRects[r][c] = drawBlock(this, r, c);
     }
+    // Teleporter portals are host-authoritative (the host resolves the actual
+    // warp and just streams the resulting position), so the client only
+    // needs to draw the matching visuals in the same spots/colors.
+    (NET_TELEPORTERS || []).forEach(tp => {
+      const color = TELEPORT_COLORS[tp.pairId % TELEPORT_COLORS.length];
+      const ax = tp.aCol*TILE + TILE/2, ay = HUD_H + tp.aRow*TILE + TILE/2;
+      const bx = tp.bCol*TILE + TILE/2, by = HUD_H + tp.bRow*TILE + TILE/2;
+      createTeleporterVisual(this, ax, ay, color);
+      createTeleporterVisual(this, bx, by, color);
+    });
 
     this.players = makePlayers(this, NET_NUM_PLAYERS);
     const hud = buildHUD(this, NET_NUM_PLAYERS);
@@ -2689,12 +2810,12 @@ function saveSettings(){
 loadSettings();
 
 document.getElementById('btn-options').onclick = () => {
-  document.getElementById('lobby-choice').classList.add('hidden');
+  document.getElementById('lobby-main').classList.add('hidden');
   document.getElementById('options-panel').classList.remove('hidden');
 };
 document.getElementById('btn-options-back').onclick = () => {
   document.getElementById('options-panel').classList.add('hidden');
-  document.getElementById('lobby-choice').classList.remove('hidden');
+  document.getElementById('lobby-main').classList.remove('hidden');
 };
 document.getElementById('map-size').onchange = e => {
   SELECTED_MAP_SIZE = e.target.value;
@@ -2750,6 +2871,22 @@ function showGameUI(){
   document.getElementById('touch-controls').classList.remove('hidden');
   if (isTouchDevice()) document.getElementById('btn-fullscreen').classList.remove('hidden');
 }
+// Shows the seed for the match currently in progress, top-left of the game
+// screen, as plain (copyable) HTML rather than canvas text — matches the
+// lobby's seed control so it can be shared the same way once a match is live.
+function updateGameSeedDisplay(seed){
+  document.getElementById('game-seed-value').textContent = seed;
+  document.getElementById('game-seed-display').classList.remove('hidden');
+}
+document.getElementById('game-seed-display').onclick = () => {
+  const seed = document.getElementById('game-seed-value').textContent;
+  if (!seed) return;
+  navigator.clipboard.writeText(seed);
+  const el = document.getElementById('game-seed-copied');
+  el.classList.remove('hidden');
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.add('hidden'), 1200);
+};
 function isTouchDevice(){
   return ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 }
@@ -2835,7 +2972,7 @@ function showJoinQR(roomId){
   document.getElementById('qr-hint').classList.remove('hidden');
 }
 
-// Shared by the Join button and by auto-join-via-URL below.
+// Shared by the Join mode and by auto-join-via-URL below.
 function attemptJoin(code){
   code = (code || '').trim();
   if (!code) return;
@@ -2843,7 +2980,7 @@ function attemptJoin(code){
   net.joinGame(
     code,
     () => {
-      document.getElementById('lobby-choice').classList.add('hidden');
+      document.getElementById('lobby-main').classList.add('hidden');
       document.getElementById('lobby-status').classList.remove('hidden');
       document.getElementById('lobby-msg').textContent = 'Connected! Waiting for host to start...';
     },
@@ -2858,6 +2995,7 @@ function tryAutoJoinFromUrl(){
   const params = new URLSearchParams(window.location.search);
   const room = params.get('room');
   if (!room) return;
+  setLobbyMode('join');
   document.getElementById('join-code').value = room;
   attemptJoin(room);
   // Strip the param so a manual refresh/restart doesn't try to rejoin the
@@ -2866,15 +3004,15 @@ function tryAutoJoinFromUrl(){
   window.history.replaceState({}, document.title, cleanUrl);
 }
 
-// Shared by "Play Solo" (always 'standard') and the Custom Solo map picker
-// (any SCENARIOS key) — both just start a local, unrecorded-to-network,
-// bots-allowed match with the given board variant.
+// Starts a local, unrecorded-to-network, bots-allowed match with whichever
+// scenario is currently selected in the map picker.
 function startSoloGame(scenarioId){
   SELECTED_SCENARIO = SCENARIOS[scenarioId] ? scenarioId : 'standard';
   const botCount = parseInt(document.getElementById('bot-count').value, 10) || 0;
   NET_BOT_COUNT = Math.min(botCount, 3);
   NET_NUM_PLAYERS = 1 + NET_BOT_COUNT;
   NET_IS_SOLO = true;
+  MATCH_SEED_CONSUMED = false;
   // Bots always keep their default P2/P3/... labels; only the local human
   // player (index 0) gets the custom name from Options, if any was set.
   net.names = [PLAYER_NAME || null, null, null, null];
@@ -2885,59 +3023,137 @@ function startSoloGame(scenarioId){
   currentGame = new Phaser.Game(makeConfig(HostScene));
 }
 
-document.getElementById('btn-solo').onclick = () => startSoloGame('standard');
-
-document.getElementById('btn-custom-solo').onclick = () => {
-  renderScenarioList();
-  document.getElementById('lobby-choice').classList.add('hidden');
-  document.getElementById('scenario-panel').classList.remove('hidden');
-};
-
-document.getElementById('btn-scenario-back').onclick = () => {
-  document.getElementById('scenario-panel').classList.add('hidden');
-  document.getElementById('lobby-choice').classList.remove('hidden');
-};
-
+// ---- Map picker: single-select cards, always visible in the lobby ----
 function renderScenarioList(){
   const list = document.getElementById('scenario-list');
   list.innerHTML = '';
   Object.keys(SCENARIOS).forEach(id => {
     const s = SCENARIOS[id];
     const card = document.createElement('div');
-    card.className = 'scenario-card';
+    card.className = 'map-card' + (id === SELECTED_SCENARIO ? ' selected' : '');
     const title = document.createElement('div');
-    title.className = 'scenario-title';
+    title.className = 'map-card-title';
     title.textContent = s.label;
-    const desc = document.createElement('div');
-    desc.className = 'scenario-desc';
-    desc.textContent = s.desc;
-    const btn = document.createElement('button');
-    btn.textContent = 'Play';
-    btn.onclick = () => startSoloGame(id);
-    card.append(title, desc, btn);
+    const hint = document.createElement('div');
+    hint.className = 'map-card-hint';
+    hint.textContent = s.desc.split('.')[0] + '.'; // short version in the card itself
+    card.append(title, hint);
+    card.onclick = () => {
+      SELECTED_SCENARIO = id;
+      list.querySelectorAll('.map-card').forEach(el => el.classList.remove('selected'));
+      card.classList.add('selected');
+      document.getElementById('map-desc').textContent = s.desc;
+      regenerateMapSeed();
+    };
     list.appendChild(card);
   });
+  document.getElementById('map-desc').textContent = (SCENARIOS[SELECTED_SCENARIO] || SCENARIOS.standard).desc;
 }
+renderScenarioList();
 
-document.getElementById('btn-host').onclick = () => {
+// The seed shown here reproduces this exact crate/teleporter layout (for
+// the same scenario, map size, and player count) — copy it to share a map,
+// or open ?seed=CODE to load one someone else shared.
+function regenerateMapSeed(){
+  MAP_SEED = randomSeedString();
+  document.getElementById('map-seed-value').textContent = MAP_SEED;
+}
+function applyMapSeedFromUrl(){
+  const params = new URLSearchParams(window.location.search);
+  const seed = params.get('seed');
+  if (!seed) return;
+  MAP_SEED = seed.trim().slice(0, 24).toUpperCase();
+  document.getElementById('map-seed-value').textContent = MAP_SEED;
+}
+document.getElementById('map-seed-value').textContent = MAP_SEED;
+applyMapSeedFromUrl();
+document.getElementById('btn-reroll-seed').onclick = regenerateMapSeed;
+document.getElementById('map-seed-value').onclick = () => {
+  navigator.clipboard.writeText(MAP_SEED);
+  const el = document.getElementById('map-seed-copied');
+  el.classList.remove('hidden');
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.add('hidden'), 1200);
+};
+
+// Lets a player load a seed someone shared with them (typed or pasted),
+// picking up the same MAP_SEED that ?seed=CODE in the URL would set.
+function applyCustomSeed(){
+  const input = document.getElementById('map-seed-input');
+  const val = input.value.trim();
+  if (!val) return;
+  MAP_SEED = val.slice(0, 24).toUpperCase();
+  document.getElementById('map-seed-value').textContent = MAP_SEED;
+  input.value = '';
+}
+document.getElementById('btn-apply-seed').onclick = applyCustomSeed;
+document.getElementById('map-seed-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') applyCustomSeed();
+});
+
+// ---- Mode picker: Solo / Host / Join, each revealing its own small extra
+// control, all sharing one CTA button at the bottom ----
+let LOBBY_MODE = 'solo';
+const PLAY_LABELS = { solo: 'Play solo', host: 'Host game', join: 'Join game' };
+function setLobbyMode(mode){
+  if (LOBBY_MODE === 'host' && mode !== 'host') resetHostPanel();
+  LOBBY_MODE = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('mode-extra-solo').classList.toggle('hidden', mode !== 'solo');
+  document.getElementById('mode-extra-join').classList.toggle('hidden', mode !== 'join');
+  document.getElementById('btn-play').textContent = PLAY_LABELS[mode];
+}
+// Clears the room-code/QR/player-list panel and brings back the Host game
+// button, so leaving Host mode doesn't leave stale info sitting there.
+// Also tears down the actual hosted PeerJS room (if one was ever created),
+// rather than leaving it running silently in the background.
+function resetHostPanel(){
+  document.getElementById('host-panel').classList.add('hidden');
+  document.getElementById('room-code-display').textContent = '';
+  document.getElementById('qr-code').innerHTML = '';
+  document.getElementById('qr-code').classList.add('hidden');
+  document.getElementById('qr-hint').classList.add('hidden');
+  document.getElementById('btn-copy').classList.add('hidden');
+  document.getElementById('btn-start').classList.add('hidden');
+  document.getElementById('player-list').innerHTML = '';
+  document.getElementById('host-msg').textContent = '';
+  document.getElementById('btn-play').classList.remove('hidden');
+  stopLobbyPoll();
+  if (net.isHost){
+    if (net._pingIntervalId){ clearInterval(net._pingIntervalId); net._pingIntervalId = null; }
+    if (net.peer && !net.peer.destroyed) net.peer.destroy();
+    net.isHost = false;
+  }
+}
+document.querySelectorAll('.mode-btn').forEach(b => b.onclick = () => setLobbyMode(b.dataset.mode));
+setLobbyMode('solo');
+
+function doHostGame(){
   NET_BOT_COUNT = 0; // bots are solo-only; hosting is always real players
   NET_IS_SOLO = false;
-  SELECTED_SCENARIO = 'standard'; // scenarios are a solo-only feature for now —
-  // ClientScene always builds the standard pillar grid on its own, so a
-  // hosted match must stick to 'standard' or host/client boards would diverge.
-  document.getElementById('lobby-msg').textContent = 'Creating room...';
+  // SELECTED_SCENARIO stays whatever was picked in the map section — the
+  // host generates the board and broadcasts it (pillars flag, crate grid,
+  // teleporter layout) so ClientScene mirrors it instead of guessing.
+  document.getElementById('host-msg').textContent = 'Creating room...';
   net.hostGame(
     id => {
-      document.getElementById('lobby-choice').classList.add('hidden');
-      document.getElementById('lobby-status').classList.remove('hidden');
+      // Fill in the mode-spacer (previously just empty flex space below the
+      // mode toggle) with the room-code/QR panel — the map picker, seed
+      // controls, options gear, and mode toggle all stay visible exactly as
+      // they were, since we're not hiding or navigating away from anything.
+      document.getElementById('host-panel').classList.remove('hidden');
       document.getElementById('room-code-display').textContent = id;
       document.getElementById('btn-copy').classList.remove('hidden');
       document.getElementById('btn-start').classList.remove('hidden');
+      document.getElementById('host-msg').textContent = '';
+      // Room's already created — hide Play so a stray click doesn't spin
+      // up a second one.
+      document.getElementById('btn-play').classList.add('hidden');
       showJoinQR(id);
       refreshPlayerList();
       startLobbyPoll();
     },
-    err => { document.getElementById('lobby-msg').textContent = 'Error: ' + (err.message || err); }
+    err => { document.getElementById('host-msg').textContent = 'Error: ' + (err.message || err); }
   );
   net.onPlayerJoined = () => { NET_NUM_PLAYERS = net.connectedCount() + 1; refreshPlayerList(); };
   net.onNameUpdate = () => refreshPlayerList();
@@ -2946,31 +3162,37 @@ document.getElementById('btn-host').onclick = () => {
   // list instead of showing as disconnected/reconnecting.
   net.onDisconnect = () => refreshPlayerList();
   net.onReconnect = () => refreshPlayerList();
+}
+
+document.getElementById('btn-play').onclick = () => {
+  if (LOBBY_MODE === 'solo') startSoloGame(SELECTED_SCENARIO);
+  else if (LOBBY_MODE === 'host') doHostGame();
+  else attemptJoin(document.getElementById('join-code').value);
 };
 
 document.getElementById('btn-copy').onclick = () => {
   navigator.clipboard.writeText(document.getElementById('room-code-display').textContent);
-  document.getElementById('lobby-msg').textContent = 'Copied!';
+  document.getElementById('host-msg').textContent = 'Copied!';
 };
 
 document.getElementById('btn-start').onclick = () => {
   stopLobbyPoll(); // HostScene takes over net.onDisconnect/onReconnect from here
+  MATCH_SEED_CONSUMED = false;
   applyMapSize(SELECTED_MAP_SIZE);
   applySpeedSetting(SELECTED_SPEED);
   showGameUI();
   currentGame = new Phaser.Game(makeConfig(HostScene));
 };
 
-document.getElementById('btn-join').onclick = () => {
-  attemptJoin(document.getElementById('join-code').value);
-};
-
 net.onStart = data => {
   NET_NUM_PLAYERS = data.numPlayers;
   NET_BLOCKS_GRID = data.blocksGrid;
+  NET_PILLARS = data.pillars !== false;
+  NET_TELEPORTERS = data.teleporters || [];
   COLS = data.cols; ROWS = data.rows; SPAWNS = buildSpawns();
   applySpeedSetting(data.speed);
   showGameUI();
+  if (data.seed) updateGameSeedDisplay(data.seed);
   // The host sends a fresh 'start' message both for the very first match AND
   // for every subsequent restart (R re-runs HostScene.create(), which calls
   // net.broadcastStart(...) again). Previously this always spun up a brand
