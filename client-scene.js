@@ -57,22 +57,22 @@ class ClientScene extends Phaser.Scene {
       if (dr !== 0 || dc !== 0) setPlayerFacing(p, Math.sign(dr), Math.sign(dc));
       p.row = pd.row; p.col = pd.col;
       const x = pd.col*TILE + TILE/2, y = HUD_H + pd.row*TILE + TILE/2;
-      // Slightly longer than STATE_INTERVAL (80ms) so a tween is still
-      // finishing (and gets smoothly retargeted) when the next snapshot
-      // arrives, rather than sitting idle waiting for it. Kept comfortably
-      // above the send interval on purpose: this margin is what absorbs
-      // real-world WebRTC jitter (the reliable/ordered channel means a
-      // delayed packet holds up everything behind it, so snapshots can
-      // arrive in bursts). A tighter margin (tried 40ms/50ms) looked
-      // smoother in theory but was visibly worse in practice once that
-      // jitter showed up.
-      this.tweens.add({ targets: p.container, x, y, duration: 90 });
+      // NET_INTERP_MS is kept a bit above STATE_INTERVAL (80ms) so a tween
+      // is still finishing (and gets smoothly retargeted) when the next
+      // snapshot arrives, rather than sitting idle waiting for it. Kept
+      // comfortably above the send interval on purpose: this margin is
+      // what absorbs real-world WebRTC jitter (the reliable/ordered
+      // channel means a delayed packet holds up everything behind it, so
+      // snapshots can arrive in bursts). A tighter margin (tried 40ms/50ms)
+      // looked smoother in theory but was visibly worse in practice once
+      // that jitter showed up.
+      this.tweens.add({ targets: p.container, x, y, duration: NET_INTERP_MS });
       if (!pd.alive && p.alive){ p.alive = false; p.cursed = false; p.curseRing.setVisible(false); p.shieldCount = 0; p.shieldRing.setVisible(false); p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText(playerDisplayName(i)+' X'); }
       // A shield count that dropped (but the player is still alive) means a
       // shield just absorbed a hit — play the same flash/sound the host does.
       if (pd.alive && p.alive && (pd.shieldCount||0) < (p.shieldCount||0)){
         SFX.shieldBreak();
-        this.tweens.add({ targets: p.body, alpha: 0.25, duration: 90, yoyo: true, repeat: 1 });
+        this.tweens.add({ targets: p.body, alpha: 0.25, duration: SHIELD_BREAK_FLASH_MS, yoyo: true, repeat: 1 });
       }
       p.maxBombs = pd.maxBombs; p.blastRange = pd.blastRange; p.speed = pd.speed; p.cursed = pd.cursed;
       p.hasKick = !!pd.hasKick; p.shieldCount = pd.shieldCount||0;
@@ -202,7 +202,7 @@ class ClientScene extends Phaser.Scene {
       dir.up !== this.lastSentMove.up || dir.down !== this.lastSentMove.down ||
       dir.left !== this.lastSentMove.left || dir.right !== this.lastSentMove.right;
 
-    if (changed || bombPressed || kickPressed || detonatePressed || minePressed || this.sendTimer > 250){
+    if (changed || bombPressed || kickPressed || detonatePressed || minePressed || this.sendTimer > INPUT_RESEND_MS){
       net.sendInput({ up:dir.up, down:dir.down, left:dir.left, right:dir.right, bombPressed, kickPressed, detonatePressed, minePressed });
       this.lastSentMove = dir;
       this.sendTimer = 0;

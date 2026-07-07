@@ -335,9 +335,6 @@ const REMOTE_BOMB_FLASH_COLOR= { r:0xaf, g:0x5a, b:0xd6 };
 const MINE_COLOR       = 0xff9800; // warning orange, distinct from remote purple and normal red
 const MINE_BASE_COLOR  = { r:0x2c, g:0x1e, b:0x10 };
 const MINE_FLASH_COLOR = { r:0xff, g:0x98, b:0x00 };
-const MINE_ARM_DELAY   = 500;   // ms before a freshly placed mine can be tripped, so the placer can step off it
-const MINE_TRIGGER_RADIUS = 1;  // Manhattan distance that trips the mine (0 = same tile only)
-const MINE_FUSE_MS = 15000;     // safety fallback so an untouched mine doesn't sit forever
 function createBombVisual(scene, x, y, isRemote, isMine){
   const strokeColor = isMine ? MINE_COLOR : (isRemote ? REMOTE_BOMB_COLOR : 0xff5555);
   // Mines sit low-profile and small — they're meant to be easy to miss

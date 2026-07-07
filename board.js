@@ -285,7 +285,7 @@ function makePlayers(scene, numPlayers){
     // ring is active (e.g. "5", "4", "3"...).
     const arenaWarnText = scene.add.text(0, -TILE*0.85, '', { fontSize:Math.round(20*UI_SCALE)+'px', color:'#ff3b30', fontStyle:'bold' }).setOrigin(0.5).setVisible(false);
     container.add([shadow, body, curseRing, shieldRing, arenaWarnRing, eyeL, eyeR, label, arenaWarnText]);
-    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, arenaWarnRing, arenaWarnText, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, hasKick:false, shieldCount:0, pierce:false, hasDetonator:false, remoteBomb:null, hasMine:false, activeMine:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc, arenaOutsideSince:0, arenaWarnMs:null, arenaWarnAt:0 };
+    const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, shieldRing, arenaWarnRing, arenaWarnText, alive:true, maxBombs:INITIAL_MAX_BOMBS, blastRange:INITIAL_BLAST_RANGE, speed:INITIAL_SPEED, curse:null, hasKick:INITIAL_HAS_KICK, shieldCount:INITIAL_SHIELD_COUNT, pierce:INITIAL_PIERCE, hasDetonator:INITIAL_HAS_DETONATOR, remoteBomb:null, hasMine:INITIAL_HAS_MINE, activeMine:null, invulnerableUntil:0, facingDr:s.dr, facingDc:s.dc, arenaOutsideSince:0, arenaWarnMs:null, arenaWarnAt:0 };
     positionPlayerEyes(player);
     players.push(player);
   }

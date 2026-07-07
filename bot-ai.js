@@ -133,7 +133,7 @@ function botDecide(scene, i, time){
   // leisurely only while fully safe and idle, so bots aren't twitchy while
   // just exploring.
   const urgent = inDanger || mem.waitingForClear;
-  mem.nextThink = time + (urgent ? 80 + Math.random()*60 : 220 + Math.random()*140);
+  mem.nextThink = time + (urgent ? BOT_THINK_URGENT_MS + Math.random()*BOT_THINK_URGENT_JITTER_MS : BOT_THINK_IDLE_MS + Math.random()*BOT_THINK_IDLE_JITTER_MS);
 
   if (inDanger){
     // Elimina 'danger' como argumento final en botFirstStepTo para que pueda cruzar la zona de explosión inminente

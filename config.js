@@ -52,18 +52,18 @@ let SELECTED_MAP_SIZE = 'default'; // set from the Options menu, applied when a 
 // board and broadcasts the layout (crate grid, pillar flag, teleporter
 // pairs), so any scenario works for Solo, Host, or Join alike.
 const SCENARIOS = {
-  standard:        { label:'Standard',        desc:'The classic maze — indestructible pillars plus destructible crates.', pillars:true,  blockFillChance:0.7,  powerupSpawnChance:0.35 },
-  custom:          { label:'Custom',          desc:'Fully custom map — tweak all.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, teleporterPairs:0, fuseMult:1, extraBlastRange:0, fogOfWar:false, shrinkingArena:false, dayNightCycle:false, isCustom:true },  
-  open_arena:      { label:'Open Arena',      desc:'No pillars — just the border and crates. Fast, open, and chaotic.',    pillars:false, blockFillChance:0.7,  powerupSpawnChance:0.35 },
-  sudden_death:    { label:'Sudden Death',    desc:'Bombs fuse in half the time and everyone starts with a bigger blast.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, fuseMult:0.5, extraBlastRange:1 },  
-  crate_rush:      { label:'Crate Rush',      desc:'A much denser crate maze — more to clear, more power-ups to find.',    pillars:true,  blockFillChance:0.92, powerupSpawnChance:0.35 },
-  minimalist:      { label:'Minimalist',      desc:'No pillars and hardly any crates.', pillars:false, blockFillChance:0.20, powerupSpawnChance:0.35 },  
-  teleporters:     { label:'Teleporters',     desc:'A few glowing portal pairs are scattered on the maze.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, teleporterPairs:1 },
-  portal_chaos:    { label:'Portal Chaos',    desc:'No pillars and many portal pairs flood the open maze.',  pillars:false, blockFillChance:0.25,  powerupSpawnChance:0.35, teleporterPairs:3 },
-  fog_of_war:      { label:'Fog of War',      desc:'Classic maze, but you can only see a radius around your own player.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, fogOfWar:true },
-  day_night_cycle: { label:'Day/Night Cycle', desc:'The map alternates between normal and a fog-of-war.', pillars:true, blockFillChance:0.7, powerupSpawnChance:0.35, dayNightCycle:true },
-  shrinking_arena: { label:'Shrinking Arena', desc:'Battle-royale style, the playable area shrinks.', pillars:true, blockFillChance:0.6, powerupSpawnChance:0.4, shrinkingArena:true },
-  powerup_frenzy:  { label:'Power-up Frenzy', desc:'Minimalist maze, but battle-royale style.',     pillars:true,  blockFillChance:0.20,  powerupSpawnChance:0.85, shrinkingArena:true },
+  standard:        { label:'Standard',        desc:'The classic maze — indestructible pillars plus destructible crates.', pillars:true,  blockFillChance:0.66,  powerupSpawnChance:0.33 },
+  custom:          { label:'Custom',          desc:'Fully custom map — tweak all.', pillars:true, blockFillChance:0.66, powerupSpawnChance:0.33, teleporterPairs:0, fuseMult:1, extraBlastRange:0, fogOfWar:false, shrinkingArena:false, dayNightCycle:false, isCustom:true },  
+  open_arena:      { label:'Open Arena',      desc:'No pillars — just the border and crates. Fast, open, and chaotic.',    pillars:false, blockFillChance:0.66,  powerupSpawnChance:0.33 },
+  sudden_death:    { label:'Sudden Death',    desc:'Bombs fuse in half the time and everyone starts with a bigger blast.', pillars:true, blockFillChance:0.66, powerupSpawnChance:0.33, fuseMult:0.5, extraBlastRange:1 },  
+  crate_rush:      { label:'Crate Rush',      desc:'A much denser crate maze — more to clear, more power-ups to find.',    pillars:true,  blockFillChance:0.90, powerupSpawnChance:0.33 },
+  minimalist:      { label:'Minimalist',      desc:'No pillars and hardly any crates.', pillars:false, blockFillChance:0.20, powerupSpawnChance:0.33 },  
+  teleporters:     { label:'Teleporters',     desc:'A few glowing portal pairs are scattered on the maze.', pillars:true, blockFillChance:0.66, powerupSpawnChance:0.33, teleporterPairs:1 },
+  portal_chaos:    { label:'Portal Chaos',    desc:'No pillars and many portal pairs flood the open maze.',  pillars:false, blockFillChance:0.20,  powerupSpawnChance:0.33, teleporterPairs:3 },
+  fog_of_war:      { label:'Fog of War',      desc:'Classic maze, but you can only see a radius around your own player.', pillars:true, blockFillChance:0.66, powerupSpawnChance:0.33, fogOfWar:true },
+  day_night_cycle: { label:'Day/Night Cycle', desc:'The map alternates between normal and a fog-of-war.', pillars:true, blockFillChance:0.66, powerupSpawnChance:0.33, dayNightCycle:true },
+  shrinking_arena: { label:'Shrinking Arena', desc:'Battle-royale style, the playable area shrinks.', pillars:true, blockFillChance:0.66, powerupSpawnChance:0.33, shrinkingArena:true },
+  powerup_frenzy:  { label:'Power-up Frenzy', desc:'Minimalist maze, but battle-royale style.',     pillars:false,  blockFillChance:0.20,  powerupSpawnChance:0.90, shrinkingArena:true },
 };
 let SELECTED_SCENARIO = 'standard'; // set by the map picker, applied when a Solo game starts
 
@@ -119,7 +119,7 @@ const SPEED_LEVELS = {
 };
 let SELECTED_SPEED = 'normal'; // set from the Options menu, applied when a game starts
 
-const BASE_MOVE_INTERVAL = 130;
+const BASE_MOVE_INTERVAL = 120;
 // Each "speed" power-up shaves this many ms off a player's own move interval,
 // down to a hard floor so movement never becomes unreadable or breaks the
 // fixed-step netcode assumptions elsewhere (bomb timers, tween durations).
@@ -129,11 +129,11 @@ const BASE_MIN_MOVE_INTERVAL = 60;
 // a permanent stat. Kept separate from the permanent stats (speed, bombs,
 // range) so it always expires on its own timer regardless of what else the
 // player has collected.
-const BASE_CURSE_DURATION = 7000;
-const CURSE_SLOW_MULT = 1.9;      // move interval multiplier while 'slow' (unaffected by game speed)
+const BASE_CURSE_DURATION = 8000;
+const CURSE_SLOW_MULT = 2.0;      // move interval multiplier while 'slow' (unaffected by game speed)
 const BASE_CURSE_AUTOBOMB_EVERY = 600; // ms between forced bomb attempts while 'autobomb'
 const CURSE_TYPES = ['reverse', 'slow', 'autobomb'];
-const BASE_BOMB_FUSE = 1700;
+const BASE_BOMB_FUSE = 1500;
 const BASE_FLAME_TIME = 300;
 const STATE_INTERVAL = 80; // ms between host -> client snapshots (~12Hz) — not scaled, it's a network rate, not gameplay pace
 
@@ -142,8 +142,34 @@ const STATE_INTERVAL = 80; // ms between host -> client snapshots (~12Hz) — no
 // pace of the game's overall speed setting like everything else.
 const BASE_BOMB_SLIDE_MS = 90;
 let BOMB_SLIDE_MS = BASE_BOMB_SLIDE_MS;
+// Proximity Mine power-up: how long after being placed before it can be
+// tripped (gives the placer a beat to step off it first), how close another
+// player has to wander (Manhattan distance, 0 = same tile only) to set it
+// off, and a safety-fuse fallback so an untouched mine doesn't just sit on
+// the field forever.
+const MINE_ARM_DELAY = 1000;
+const MINE_TRIGGER_RADIUS = 1;
+const MINE_FUSE_MS = 30000;
 // Heart/Shield power-up: stacks up to this many absorbed hits.
 const MAX_SHIELD = 3;
+// A fresh player's starting bomb blast range (in tiles, per direction)
+// before any Flame power-ups are picked up (each Flame adds +1 — see
+// checkPowerupPickup in host-scene.js).
+const INITIAL_BLAST_RANGE = 1;
+// The rest of a fresh player's starting loadout, before any power-ups are
+// picked up. Numeric stats grow via power-ups (each Bomb power-up adds +1
+// maxBombs, each Speed power-up adds +1 speed, each Heart adds +1
+// shieldCount up to MAX_SHIELD); the boolean abilities are permanently
+// off until their matching power-up is collected once. Extracted here so
+// starting balance (e.g. for a "everyone starts faster" variant) can be
+// tuned in one place instead of hunting through the player object literal.
+const INITIAL_MAX_BOMBS = 1;
+const INITIAL_SPEED = 0;
+const INITIAL_SHIELD_COUNT = 0;
+const INITIAL_HAS_KICK = false;
+const INITIAL_PIERCE = false;
+const INITIAL_HAS_DETONATOR = false;
+const INITIAL_HAS_MINE = false;
 // Brief invulnerability after a shield absorbs a hit, so the same lingering
 // flame doesn't burn through every stacked shield in a single instant.
 const SHIELD_HIT_IFRAME_MS = 500;
@@ -179,7 +205,7 @@ const ARENA_GRACE_MS = 5000;
 // which phase it currently is (broadcast each tick as data.isNight) so every
 // viewer's screen switches at the same moment, even though — like regular
 // Fog of War — each viewer's fog is still centered on their own player.
-const DAY_NIGHT_PHASE_MS = 20000;
+const DAY_NIGHT_PHASE_MS = 8000;
 
 // Mutable, speed-scaled versions of the BASE_* values above. These are what
 // the rest of the game actually reads; applySpeedSetting() recomputes them
@@ -230,7 +256,54 @@ function applyMapSize(key){
   SPAWNS = buildSpawns();
 }
 
-// ====================== POWER-UP DROP WEIGHTS ======================
+// ====================== NETWORKING TIMING ======================
+// Host-authoritative connection handling. Kept here alongside the other
+// tunable constants rather than buried inside NetManager, so reconnect
+// behavior can be tweaked in one place.
+// How long a dropped player's slot stays reserved, waiting for them to
+// reconnect with the same token, before the slot is treated as abandoned.
+const RECONNECT_GRACE_MS = 20000;
+// How often the host pings each connected client to measure latency (the
+// result is what shows up as everyone's ping in the HUD).
+const PING_INTERVAL_MS = 2000;
+// How long a client waits between its own reconnect attempts after losing
+// the host connection.
+const RECONNECT_RETRY_INTERVAL_MS = 2000;
+// How many reconnect attempts a client makes before giving up. At
+// RECONNECT_RETRY_INTERVAL_MS apart, this should cover roughly the same
+// span as RECONNECT_GRACE_MS so a client doesn't stop retrying while the
+// host is still holding its slot open (or vice versa).
+const RECONNECT_MAX_ATTEMPTS = 10;
+
+// Client-side networking feel: how long a remote player's position tween
+// takes to interpolate a freshly-arrived snapshot. Kept a bit above
+// STATE_INTERVAL (80ms) so a tween is still finishing — and gets smoothly
+// retargeted — when the next snapshot arrives, rather than sitting idle
+// waiting for it; this margin is what absorbs real-world WebRTC jitter.
+const NET_INTERP_MS = 90;
+// How often a client re-sends its current input to the host even when
+// nothing has changed, as a keepalive/resync on top of the immediate
+// resends that happen whenever a key/button state actually changes.
+const INPUT_RESEND_MS = 250;
+
+// ====================== BOT AI ======================
+// How often a bot re-evaluates its next move ("thinks"). Reacts quickly
+// (short interval) whenever something dangerous is nearby or it's watching
+// a bomb it just planted, so it notices the instant it needs to move;
+// thinks more leisurely (long interval) only while fully safe and idle, so
+// bots read as responsive without being twitchy while just exploring. Each
+// tier adds a random jitter on top so bots don't all re-think in lockstep.
+const BOT_THINK_URGENT_MS = 80;
+const BOT_THINK_URGENT_JITTER_MS = 60;
+const BOT_THINK_IDLE_MS = 220;
+const BOT_THINK_IDLE_JITTER_MS = 140;
+
+// ====================== SHARED VISUAL FEEL ======================
+// Flash duration when a shield absorbs a hit — the same tween runs on the
+// host's own view and is mirrored on every client's view, so it lives here
+// once instead of as two copies that could quietly drift apart.
+const SHIELD_BREAK_FLASH_MS = 90;
+
 // Relative chance that a destroyed crate drops each power-up type. Shares
 // must sum to 1 — pickPowerupType() walks them in this same insertion
 // order to build the cumulative thresholds each time it rolls.

@@ -576,7 +576,7 @@ class HostScene extends Phaser.Scene {
       p.shieldCount--;
       p.invulnerableUntil = (now !== undefined ? now : this.time.now) + SHIELD_HIT_IFRAME_MS;
       SFX.shieldBreak();
-      this.tweens.add({ targets: p.body, alpha: 0.25, duration: 90, yoyo: true, repeat: 1 });
+      this.tweens.add({ targets: p.body, alpha: 0.25, duration: SHIELD_BREAK_FLASH_MS, yoyo: true, repeat: 1 });
       if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'shieldBreak', player:p.id });
       return;
     }
@@ -638,7 +638,7 @@ class HostScene extends Phaser.Scene {
   }
 
   // True while a networked player's connection is down but still inside its
-  // reconnect grace window (see net.reconnectDeadline / net.RECONNECT_GRACE_MS).
+  // reconnect grace window (see net.reconnectDeadline / RECONNECT_GRACE_MS).
   isPendingReconnect(i){
     return this.controllers[i] === 'remote' && net.reconnectDeadline[i-1] > 0;
   }

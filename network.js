@@ -11,7 +11,6 @@ class NetManager {
     this.conns = [null, null, null];         // host: live DataConnection per slot (or null)
     this.tokens = [null, null, null];        // host: the token that "owns" each slot once claimed
     this.reconnectDeadline = [0, 0, 0];      // host: wall-clock ms deadline while a slot's conn is down (0 = not pending)
-    this.RECONNECT_GRACE_MS = 20000;
     this.hostConn = null;  // client: connection to host
     this.names = [null, null, null, null]; // display name per player index (null = use default P1/P2/...)
     this.onPlayerJoined = null;
@@ -50,7 +49,7 @@ class NetManager {
     // below), so this measures true round-trip time over the DataConnection.
     this._pingIntervalId = setInterval(() => {
       for (const c of this.conns) if (c && c.open) c.send({ t:'ping', ts: Date.now() });
-    }, 2000);
+    }, PING_INTERVAL_MS);
     this.peer = new Peer();
     this.peer.on('open', id => onReady(id));
     this.peer.on('error', err => onError && onError(err));
@@ -90,7 +89,7 @@ class NetManager {
         if (this.conns[slot] === conn) this.conns[slot] = null;
         // Don't eliminate them yet — give them a grace window to reconnect
         // (same token) before treating the slot as truly abandoned.
-        this.reconnectDeadline[slot] = Date.now() + this.RECONNECT_GRACE_MS;
+        this.reconnectDeadline[slot] = Date.now() + RECONNECT_GRACE_MS;
         if (this.onDisconnect) this.onDisconnect(slot + 1);
       });
     });
@@ -153,7 +152,7 @@ class NetManager {
 
   _retryReconnect(attempt, onError){
     if (!this._reconnecting) return; // reconnect already succeeded elsewhere
-    if (attempt >= 10){ // ~20s of retries, matching RECONNECT_GRACE_MS
+    if (attempt >= RECONNECT_MAX_ATTEMPTS){ // matches RECONNECT_GRACE_MS at RECONNECT_RETRY_INTERVAL_MS apart
       this._reconnecting = false;
       if (this.onHostLost) this.onHostLost('failed');
       return;
@@ -170,7 +169,7 @@ class NetManager {
           this.peer.on('error', retryAgain);
         }
       } catch (e){ retryAgain(); }
-    }, 2000);
+    }, RECONNECT_RETRY_INTERVAL_MS);
   }
 
   broadcastStart(payload){ for (const c of this.conns) if (c) c.send(Object.assign({ t:'start', names: this.names.slice() }, payload)); }
