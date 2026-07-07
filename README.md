@@ -35,7 +35,7 @@ It features real-time network play via WebRTC and an autonomous pathfinding bot 
 | --- | --- | --- |
 | **Movement** | `WASD` / Arrow keys | On-screen directional D-pad |
 | **Drop bomb** | `Space` / `Enter` | Virtual red bomb button |
-| **Restart game** | `R` *(Host / Solo only)* | — |
+| **Restart game** | `Alt+R` *(Host / Solo only)* | — |
 
 ---
 

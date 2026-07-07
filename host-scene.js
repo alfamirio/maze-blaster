@@ -7,7 +7,7 @@ class HostScene extends Phaser.Scene {
     this.scenarioConfig = scenario;
     // The very first create() of a match uses the seed shown/copied in the
     // lobby, so that seed reliably reproduces this exact layout. Restarting
-    // mid-session (R) re-rolls a fresh seed each time, same as the old
+    // mid-session (Alt+R) re-rolls a fresh seed each time, same as the old
     // unseeded behavior, so restarts still give you a new map rather than
     // replaying the same one.
     this.currentSeed = MATCH_SEED_CONSUMED ? randomSeedString() : MAP_SEED;
@@ -133,7 +133,7 @@ class HostScene extends Phaser.Scene {
     // the center every SHRINK_INTERVAL_MS, after an initial SHRINK_GRACE_MS
     // with no shrinking. Scheduling uses Date.now() rather than the Phaser
     // scene clock, matching the match timer above, since the scene clock
-    // isn't guaranteed to reset to 0 on a mid-session restart (R).
+    // isn't guaranteed to reset to 0 on a mid-session restart (Alt+R).
     this.shrinkingArena = !!scenario.shrinkingArena;
     if (this.shrinkingArena){
       this.arenaBounds = { minR:0, maxR:ROWS-1, minC:0, maxC:COLS-1 };
@@ -232,7 +232,13 @@ class HostScene extends Phaser.Scene {
     };
 
     this.localKeys = makeLocalKeys(this);
-    this.keyR = this.input.keyboard.addKey('R');
+    // Restart is Alt+R (not plain R) so it can't be triggered by a stray tap
+    // of the R key alone. Phaser's Key/JustDown helpers don't track modifier
+    // state, so this listens to the raw keydown event instead and only arms
+    // a one-shot flag when the browser reports altKey held; update() consumes
+    // and clears that flag the same way JustDown would.
+    this._altRPressed = false;
+    this.input.keyboard.on('keydown-R', event => { if (event.altKey) this._altRPressed = true; });
     this.playerMoveTime = new Array(NET_NUM_PLAYERS).fill(0);
     this.playerMoving = new Array(NET_NUM_PLAYERS).fill(false);
     this.aliveCount = NET_NUM_PLAYERS;
@@ -617,7 +623,7 @@ class HostScene extends Phaser.Scene {
       return;
     }
     const winner = this.players.find(p => p.alive);
-    this.winText.setText(winner ? `${playerDisplayName(winner.id)} wins! (R to restart)` : `Draw! (R to restart)`);
+    this.winText.setText(winner ? `${playerDisplayName(winner.id)} wins! (Alt+R to restart)` : `Draw! (Alt+R to restart)`);
     if (winner && winner.id === net.myIndex) SFX.win();
     else SFX.lose();
   }
@@ -747,7 +753,7 @@ class HostScene extends Phaser.Scene {
     if (fogActive) updateFogOverlay(this.fogGfx, this.players[0]);
     else if (this.fogGfx) this.fogGfx.clear();
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyR)){ this.scene.restart(); this.gameOver=false; return; }
+    if (this._altRPressed){ this._altRPressed = false; this.scene.restart(); this.gameOver=false; return; }
 
     if (!this.gameOver){
       for (let i = 0; i < NET_NUM_PLAYERS; i++){
