@@ -129,6 +129,23 @@ document.getElementById('game-seed-display').onclick = () => {
   clearTimeout(el._hideTimer);
   el._hideTimer = setTimeout(() => el.classList.add('hidden'), 1200);
 };
+// Live FPS readout, shown next to the seed once a match is on screen. Reads
+// Phaser's own smoothed frame-rate counter (currentGame.loop.actualFps)
+// rather than hand-rolling one, and polls it on an interval independent of
+// any scene's update() so it keeps working across host/client scene swaps.
+function updateFpsDisplay(){
+  const el = document.getElementById('fps-display');
+  if (!currentGame || document.getElementById('game-wrap').classList.contains('hidden')){
+    el.classList.add('hidden');
+    return;
+  }
+  const fps = Math.round(currentGame.loop.actualFps);
+  el.textContent = fps + ' FPS';
+  el.classList.remove('hidden');
+  el.classList.toggle('fps-low', fps < 50 && fps >= 30);
+  el.classList.toggle('fps-critical', fps < 30);
+}
+setInterval(updateFpsDisplay, 500);
 function isTouchDevice(){
   return ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 }
