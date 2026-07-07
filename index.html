@@ -1265,6 +1265,16 @@ function makePlayers(scene, numPlayers){
   }
   return players;
 }
+// Formats a duration in milliseconds as "M:SS" (or "MM:SS" past 9:59) for the
+// match timer. Clamped at 0 so a slightly-negative rounding blip (possible in
+// the first frame or two after create()) never flashes a "-0:01".
+function formatMatchTime(ms){
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
 function buildHUD(scene, numPlayers){
   scene.add.rectangle(COLS*TILE/2, HUD_H/2, COLS*TILE, HUD_H, 0x15181d);
   const hudTexts = [];
@@ -1275,6 +1285,10 @@ function buildHUD(scene, numPlayers){
     scene.add.circle(x, statsY, 9*UI_SCALE, PLAYER_COLORS[i]);
     hudTexts.push(scene.add.text(x+15*UI_SCALE, statsY-8*UI_SCALE, '', { fontSize:Math.round(12*UI_SCALE)+'px', color:'#eee' }));
   }
+
+  // Match timer: top-right corner of the HUD bar, right-aligned so it grows
+  // toward the left rather than shifting off the edge as digits change.
+  const timerText = scene.add.text(COLS*TILE - 10*UI_SCALE, statsY-8*UI_SCALE, '0:00', { fontSize:Math.round(13*UI_SCALE)+'px', color:'#9fd3ff', fontStyle:'bold' }).setOrigin(1, 0);
 
   // Win/status message: used to be a permanent second row inside the HUD
   // bar, taking up board space the entire game even though it's empty
@@ -1296,7 +1310,7 @@ function buildHUD(scene, numPlayers){
       winLabel.setVisible(show);
     }
   };
-  return { hudTexts, winText };
+  return { hudTexts, winText, timerText };
 }
 
 // ====================== BOT AI (host-only, drives non-local players in solo mode) ======================
@@ -1735,7 +1749,7 @@ class HostScene extends Phaser.Scene {
 
     this.players = makePlayers(this, NET_NUM_PLAYERS);
     const hud = buildHUD(this, NET_NUM_PLAYERS);
-    this.hudTexts = hud.hudTexts; this.winText = hud.winText;
+    this.hudTexts = hud.hudTexts; this.winText = hud.winText; this.timerText = hud.timerText;
 
     // Player 0 is always the local human. In solo mode, players 1..NET_BOT_COUNT
     // are AI bots; any remaining players are real network clients (multiplayer).
@@ -1792,6 +1806,14 @@ class HostScene extends Phaser.Scene {
     this.aliveCount = NET_NUM_PLAYERS;
     this.gameOver = false;
     this.lastBroadcast = 0;
+
+    // Match timer: measured against the scene's own clock (this.time.now),
+    // which restarts fresh whenever the scene does (R to restart), so a
+    // rematch always starts back at 0:00. Frozen at whatever value it hit
+    // once the match ends, both on-screen (this.timerText) and in the
+    // broadcast snapshot, so clients' clocks stop in sync with the host's.
+    this.matchStartTime = this.time.now;
+    this.frozenElapsed = 0;
 
     net.broadcastStart({ blocksGrid: this.blocksGridBool, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED });
   }
@@ -2080,6 +2102,7 @@ class HostScene extends Phaser.Scene {
   endGame(){
     if (this.gameOver) return;
     this.gameOver = true;
+    this.frozenElapsed = this.time.now - this.matchStartTime;
     if (this.recording){
       const winner = this.players.find(p => p.alive);
       this.recording.events.push({ t: Math.round(this.time.now), type:'gameOver', winner: winner ? winner.id : null });
@@ -2144,6 +2167,7 @@ class HostScene extends Phaser.Scene {
       explosions: this.explosionVisuals.map(ev => ({ row:ev.row, col:ev.col, up:ev.arm.up, down:ev.arm.down, left:ev.arm.left, right:ev.arm.right })),
       blocksGrid: this.blocksGridBool,
       powerups: powerupsList,
+      elapsed: this.frozenElapsed,
       over: this.gameOver ? { winner: (this.players.find(p=>p.alive) || {}).id } : null
     };
   }
@@ -2164,6 +2188,8 @@ class HostScene extends Phaser.Scene {
       }
     }
     this.updateHUD();
+    if (!this.gameOver) this.frozenElapsed = time - this.matchStartTime;
+    this.timerText.setText(formatMatchTime(this.frozenElapsed));
     this.checkFlameDamage(time);
     for (const bomb of this.activeBombs) updateBombVisual(bomb.gfx, bomb.placedAt, time);
 
@@ -2238,7 +2264,7 @@ class ClientScene extends Phaser.Scene {
 
     this.players = makePlayers(this, NET_NUM_PLAYERS);
     const hud = buildHUD(this, NET_NUM_PLAYERS);
-    this.hudTexts = hud.hudTexts; this.winText = hud.winText;
+    this.hudTexts = hud.hudTexts; this.winText = hud.winText; this.timerText = hud.timerText;
 
     this.bombGfxMap = {};
     this.bombPlacedMap = {};
@@ -2254,6 +2280,7 @@ class ClientScene extends Phaser.Scene {
   }
 
   applyState(data){
+    if (typeof data.elapsed === 'number') this.timerText.setText(formatMatchTime(data.elapsed));
     data.players.forEach((pd, i) => {
       const p = this.players[i];
       if (!p) return;
@@ -2261,6 +2288,15 @@ class ClientScene extends Phaser.Scene {
       if (dr !== 0 || dc !== 0) setPlayerFacing(p, Math.sign(dr), Math.sign(dc));
       p.row = pd.row; p.col = pd.col;
       const x = pd.col*TILE + TILE/2, y = HUD_H + pd.row*TILE + TILE/2;
+      // Slightly longer than STATE_INTERVAL (80ms) so a tween is still
+      // finishing (and gets smoothly retargeted) when the next snapshot
+      // arrives, rather than sitting idle waiting for it. Kept comfortably
+      // above the send interval on purpose: this margin is what absorbs
+      // real-world WebRTC jitter (the reliable/ordered channel means a
+      // delayed packet holds up everything behind it, so snapshots can
+      // arrive in bursts). A tighter margin (tried 40ms/50ms) looked
+      // smoother in theory but was visibly worse in practice once that
+      // jitter showed up.
       this.tweens.add({ targets: p.container, x, y, duration: 90 });
       if (!pd.alive && p.alive){ p.alive = false; p.cursed = false; p.curseRing.setVisible(false); p.shieldCount = 0; p.shieldRing.setVisible(false); p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText(playerDisplayName(i)+' X'); }
       // A shield count that dropped (but the player is still alive) means a
