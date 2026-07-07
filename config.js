@@ -303,6 +303,21 @@ const BOT_THINK_URGENT_MS = 80;
 const BOT_THINK_URGENT_JITTER_MS = 60;
 const BOT_THINK_IDLE_MS = 220;
 const BOT_THINK_IDLE_JITTER_MS = 140;
+// Bot personalities: each is a distinct decision-making style layered on top
+// of the same shared danger-avoidance/pathfinding core in bot-ai.js (nobody
+// walks into fire on purpose, regardless of personality). 'classic' is the
+// original/default behavior — everything else is a variant. Label/emoji are
+// shared between the lobby's per-bot dropdown and the in-game player label.
+// Object key order also drives the lobby dropdown's option order, so
+// 'classic' is listed first.
+const BOT_PERSONALITIES = {
+  classic: { label:'Classic (default)', emoji:'\u{1F916}', desc:'Breaks blocks for power-ups, only fights when a bomb is convenient.' },
+  hunter:  { label:'Hunter',           emoji:'\u{1F3F9}', desc:'Actively chases down other players and bombs aggressively.' },
+  camper:  { label:'Camper',           emoji:'\u{1F3D5}\uFE0F', desc:'Sticks close to its spawn corner, rarely goes looking for trouble.' },
+  chaotic: { label:'Chaotic',          emoji:'\u{1F32A}\uFE0F', desc:'Thinks fast, moves erratically, spams bombs with little planning.' },
+  coward:  { label:'Coward',           emoji:'\u{1F430}', desc:'Avoids other players and only bombs when cornered.' },
+};
+const DEFAULT_BOT_PERSONALITY_ORDER = ['classic', 'hunter', 'camper']; // default pick for bot slots 1/2/3 in the lobby
 
 // ====================== SHARED VISUAL FEEL ======================
 // Flash duration when a shield absorbs a hit — the same tween runs on the

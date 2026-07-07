@@ -200,6 +200,10 @@ function playerDisplayName(i){
 }
 let NET_NUM_PLAYERS = 1;
 let NET_BOT_COUNT = 0; // solo mode only: players 1..NET_BOT_COUNT are AI-controlled
+// solo mode only: personality key per bot slot (index 0 = bot slot 1 = player
+// index 1, etc.), chosen per-bot in the lobby. Falls back to 'classic' for any
+// slot left unset.
+let NET_BOT_PERSONALITIES = [];
 let NET_BLOCKS_GRID = null;
 let NET_PILLARS = true;     // client-side mirror of the host's scenario.pillars flag
 let NET_TELEPORTERS = [];   // client-side mirror of the host's _teleporterPairsList (visuals only)

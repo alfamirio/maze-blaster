@@ -152,9 +152,20 @@ class HostScene extends Phaser.Scene {
       else if (i <= NET_BOT_COUNT) this.controllers.push('bot');
       else this.controllers.push('remote');
     }
+    // this.botPersonalities is indexed by player index (matching
+    // this.controllers), so bot-ai.js can look it up as
+    // scene.botPersonalities[i] with no slot-number translation.
+    this.botPersonalities = [];
+    for (let i = 1; i <= NET_BOT_COUNT; i++){
+      const key = NET_BOT_PERSONALITIES[i-1];
+      this.botPersonalities[i] = BOT_PERSONALITIES[key] ? key : 'classic';
+    }
     this.botMemory = [];
     this.players.forEach((p, i) => {
-      if (this.controllers[i] === 'bot') p.label.setText(playerDisplayName(i)+' \u{1F916}');
+      if (this.controllers[i] === 'bot'){
+        const meta = BOT_PERSONALITIES[this.botPersonalities[i]] || BOT_PERSONALITIES.classic;
+        p.label.setText(playerDisplayName(i)+' '+meta.emoji);
+      }
     });
 
     activeHostScene = this;
@@ -175,6 +186,7 @@ class HostScene extends Phaser.Scene {
         cols: COLS, rows: ROWS, tile: TILE, hudHeight: HUD_H,
         numPlayers: NET_NUM_PLAYERS,
         botCount: NET_BOT_COUNT,
+        botPersonalities: this.botPersonalities.slice(),
         controllers: this.controllers.slice(), // 'local' | 'bot' per player index
         playerNames: Array.from({length: NET_NUM_PLAYERS}, (_, i) => playerDisplayName(i)),
         spawns: SPAWNS.slice(0, NET_NUM_PLAYERS),
@@ -601,7 +613,7 @@ class HostScene extends Phaser.Scene {
     p.shieldRing.setVisible(false);
     p.body.setFillStyle(0x333333);
     p.container.setAlpha(0.55);
-    const tag = this.controllers[p.id] === 'bot' ? ' \u{1F916}' : '';
+    const tag = this.controllers[p.id] === 'bot' ? ' '+(BOT_PERSONALITIES[this.botPersonalities[p.id]] || BOT_PERSONALITIES.classic).emoji : '';
     p.label.setText(playerDisplayName(p.id)+tag+' X');
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'death', player:p.id });
     this.aliveCount--;
@@ -652,7 +664,7 @@ class HostScene extends Phaser.Scene {
   updateHUD(){
     for (let i = 0; i < NET_NUM_PLAYERS; i++){
       const p = this.players[i];
-      const tag = this.controllers[i] === 'bot' ? '\u{1F916}' : '';
+      const tag = this.controllers[i] === 'bot' ? (BOT_PERSONALITIES[this.botPersonalities[i]] || BOT_PERSONALITIES.classic).emoji : '';
       const reconnecting = this.isPendingReconnect(i);
       // Ping only applies to real network players — solo/bot slots have no
       // connection to measure — and only once a slot's first ping reply has

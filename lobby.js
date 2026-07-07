@@ -279,6 +279,7 @@ function startSoloGame(scenarioId){
   const botCount = parseInt(document.getElementById('bot-count').value, 10) || 0;
   NET_BOT_COUNT = Math.min(botCount, 3);
   NET_NUM_PLAYERS = 1 + NET_BOT_COUNT;
+  NET_BOT_PERSONALITIES = readBotPersonalitySelections();
   NET_IS_SOLO = true;
   MATCH_SEED_CONSUMED = false;
   // Bots always keep their default P2/P3/... labels; only the local human
@@ -290,6 +291,44 @@ function startSoloGame(scenarioId){
   document.getElementById('btn-export').classList.remove('hidden');
   currentGame = new Phaser.Game(makeConfig(HostScene));
 }
+
+// ---- Per-bot personality picker: one dropdown per active bot slot,
+// rebuilt whenever the bot count changes. Each bot gets a sensible default
+// personality (varied, via DEFAULT_BOT_PERSONALITY_ORDER) but the player can
+// override any/all of them before starting the match.
+function renderBotPersonalityRows(){
+  const container = document.getElementById('bot-personality-rows');
+  const botCount = Math.min(parseInt(document.getElementById('bot-count').value, 10) || 0, 3);
+  // Preserve any selections already made for slots that still exist, so
+  // bumping the bot count up/down doesn't reset choices the player made.
+  const previous = Array.from(container.querySelectorAll('select')).map(s => s.value);
+  container.innerHTML = '';
+  for (let slot = 0; slot < botCount; slot++){
+    const row = document.createElement('div');
+    row.className = 'bot-personality-row';
+    const label = document.createElement('label');
+    label.textContent = `Bot ${slot+1}`;
+    label.setAttribute('for', `bot-personality-${slot}`);
+    const select = document.createElement('select');
+    select.id = `bot-personality-${slot}`;
+    Object.keys(BOT_PERSONALITIES).forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = BOT_PERSONALITIES[key].label;
+      select.appendChild(opt);
+    });
+    select.value = previous[slot] || DEFAULT_BOT_PERSONALITY_ORDER[slot] || 'classic';
+    row.appendChild(label);
+    row.appendChild(select);
+    container.appendChild(row);
+  }
+}
+function readBotPersonalitySelections(){
+  const container = document.getElementById('bot-personality-rows');
+  return Array.from(container.querySelectorAll('select')).map(s => s.value || 'classic');
+}
+document.getElementById('bot-count').addEventListener('change', renderBotPersonalityRows);
+renderBotPersonalityRows();
 
 // ---- Map picker: single-select cards, always visible in the lobby ----
 function renderScenarioList(){
