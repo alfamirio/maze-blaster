@@ -20,6 +20,7 @@
   #options-panel h2 { margin:0 0 14px; font-size:18px; }
   .option-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 14px; font-size:14px; color:#ccc; text-align:left; }
   .option-row select { flex:0 0 auto; padding:6px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
+  .option-row input[type="text"] { flex:0 0 auto; width:140px; box-sizing:border-box; padding:6px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; text-align:right; }
   #options-hint { font-size:12px; color:#888; margin:-6px 0 14px; text-align:left; }
   #bot-count-row { display:flex; align-items:center; justify-content:center; gap:8px; margin:-2px 0 6px; font-size:13px; color:#aaa; }
   #bot-count-row select { padding:5px 8px; border-radius:6px; background:#0e1013; color:#eee; border:1px solid #333; font-size:14px; }
@@ -79,6 +80,10 @@
   <div id="options-panel" class="hidden">
     <h2>Options</h2>
     <div class="option-row">
+      <label for="player-name">Your name</label>
+      <input id="player-name" type="text" maxlength="16" placeholder="P1, P2, ...">
+    </div>
+    <div class="option-row">
       <label for="map-size">Map size</label>
       <select id="map-size">
         <option value="vsmall">Very small (11×7)</option>
@@ -105,7 +110,7 @@
         <option value="off">Off</option>
       </select>
     </div>
-    <div id="options-hint">Map size and Speed apply when you start a Solo or Hosted game. Sound applies immediately. All are saved on this device.</div>
+    <div id="options-hint">Your name is broadcast to other players when you host, join, or play solo — leave it blank to use the default P1, P2, etc. Map size and Speed apply when you start a Solo or Hosted game. Sound applies immediately. All are saved on this device.</div>
     <button id="btn-options-back">Back</button>
   </div>
 
@@ -1037,7 +1042,7 @@ function makePlayers(scene, numPlayers){
     const eyeRad = Math.max(1.5, TILE*0.045);
     const eyeL = scene.add.circle(0, 0, eyeRad, 0x161616);
     const eyeR = scene.add.circle(0, 0, eyeRad, 0x161616);
-    const label = scene.add.text(0, -TILE*0.55, 'P'+(i+1), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
+    const label = scene.add.text(0, -TILE*0.55, playerDisplayName(i), { fontSize:Math.round(12*UI_SCALE)+'px', color:'#fff' }).setOrigin(0.5);
     container.add([shadow, body, curseRing, eyeL, eyeR, label]);
     const player = { id:i, row:s.r, col:s.c, container, body, label, shadow, eyeL, eyeR, curseRing, alive:true, maxBombs:1, blastRange:2, speed:0, curse:null, facingDr:s.dr, facingDc:s.dc };
     positionPlayerEyes(player);
@@ -1288,7 +1293,9 @@ class NetManager {
     this.myIndex = 0;
     this.conns = [];       // host: DataConnections, array index i => player index i+1
     this.hostConn = null;  // client: connection to host
+    this.names = [null, null, null, null]; // display name per player index (null = use default P1/P2/...)
     this.onPlayerJoined = null;
+    this.onNameUpdate = null; // host: (playerIndex) — fired when a client's name arrives/changes
     this.onDisconnect = null;
     this.onInput = null;   // host: (playerIndex, data)
     this.onStart = null;   // client: (data)
@@ -1298,6 +1305,8 @@ class NetManager {
   hostGame(onReady, onError){
     this.isHost = true;
     this.myIndex = 0;
+    this.names = [null, null, null, null];
+    this.names[0] = (typeof PLAYER_NAME !== 'undefined' && PLAYER_NAME) ? PLAYER_NAME : null;
     this.peer = new Peer();
     this.peer.on('open', id => onReady(id));
     this.peer.on('error', err => onError && onError(err));
@@ -1311,6 +1320,11 @@ class NetManager {
       });
       conn.on('data', data => {
         if (data.t === 'input' && this.onInput) this.onInput(idx, data);
+        else if (data.t === 'join'){
+          const nm = data.name && String(data.name).trim();
+          this.names[idx] = nm ? nm.slice(0, 16) : null;
+          if (this.onNameUpdate) this.onNameUpdate(idx);
+        }
       });
       conn.on('close', () => { if (this.onDisconnect) this.onDisconnect(idx); });
     });
@@ -1323,22 +1337,32 @@ class NetManager {
     this.peer.on('open', () => {
       const conn = this.peer.connect(hostId, { reliable: true });
       this.hostConn = conn;
-      conn.on('open', () => onReady());
+      conn.on('open', () => {
+        const nm = (typeof PLAYER_NAME !== 'undefined' && PLAYER_NAME) ? PLAYER_NAME : null;
+        conn.send({ t:'join', name: nm });
+        onReady();
+      });
       conn.on('data', data => {
         if (data.t === 'welcome') this.myIndex = data.index;
-        else if (data.t === 'start' && this.onStart) this.onStart(data);
+        else if (data.t === 'start' && this.onStart){ if (data.names) this.names = data.names; this.onStart(data); }
         else if (data.t === 'state' && this.onState) this.onState(data);
       });
       conn.on('error', err => onError && onError(err));
     });
   }
 
-  broadcastStart(payload){ for (const c of this.conns) c.send(Object.assign({ t:'start' }, payload)); }
+  broadcastStart(payload){ for (const c of this.conns) c.send(Object.assign({ t:'start', names: this.names.slice() }, payload)); }
   broadcastState(payload){ for (const c of this.conns) c.send(Object.assign({ t:'state' }, payload)); }
   sendInput(data){ if (this.hostConn) this.hostConn.send(Object.assign({ t:'input' }, data)); }
 }
 
 const net = new NetManager();
+// Returns a player's custom display name if one was set (host, in-game
+// broadcast to all clients), otherwise the default 'P1'/'P2'/etc label.
+function playerDisplayName(i){
+  const nm = net.names && net.names[i];
+  return (nm && String(nm).trim()) ? String(nm).trim() : 'P'+(i+1);
+}
 let NET_NUM_PLAYERS = 1;
 let NET_BOT_COUNT = 0; // solo mode only: players 1..NET_BOT_COUNT are AI-controlled
 let NET_BLOCKS_GRID = null;
@@ -1402,7 +1426,7 @@ class HostScene extends Phaser.Scene {
     }
     this.botMemory = [];
     this.players.forEach((p, i) => {
-      if (this.controllers[i] === 'bot') p.label.setText('P'+(i+1)+' \u{1F916}');
+      if (this.controllers[i] === 'bot') p.label.setText(playerDisplayName(i)+' \u{1F916}');
     });
 
     activeHostScene = this;
@@ -1578,7 +1602,7 @@ class HostScene extends Phaser.Scene {
     p.body.setFillStyle(0x333333);
     p.container.setAlpha(0.55);
     const tag = this.controllers[p.id] === 'bot' ? ' \u{1F916}' : '';
-    p.label.setText('P'+(p.id+1)+tag+' X');
+    p.label.setText(playerDisplayName(p.id)+tag+' X');
     if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'death', player:p.id });
     this.aliveCount--;
     const threshold = NET_NUM_PLAYERS > 1 ? 1 : 0;
@@ -1598,7 +1622,7 @@ class HostScene extends Phaser.Scene {
       return;
     }
     const winner = this.players.find(p => p.alive);
-    this.winText.setText(winner ? `Player ${winner.id+1} wins! (R to restart)` : `Draw! (R to restart)`);
+    this.winText.setText(winner ? `${playerDisplayName(winner.id)} wins! (R to restart)` : `Draw! (R to restart)`);
     if (winner && winner.id === net.myIndex) SFX.win();
     else SFX.lose();
   }
@@ -1623,7 +1647,7 @@ class HostScene extends Phaser.Scene {
       const p = this.players[i];
       const tag = this.controllers[i] === 'bot' ? '\u{1F916}' : '';
       const curseTag = p.curse ? ' \u{1F480}' : '';
-      this.hudTexts[i].setText(`P${i+1}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}` : 'OUT'));
+      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}` : 'OUT'));
       this.hudTexts[i].setColor(p.alive ? (p.curse ? '#c39bd3' : '#eee') : '#666');
     }
   }
@@ -1735,10 +1759,10 @@ class ClientScene extends Phaser.Scene {
       p.row = pd.row; p.col = pd.col;
       const x = pd.col*TILE + TILE/2, y = HUD_H + pd.row*TILE + TILE/2;
       this.tweens.add({ targets: p.container, x, y, duration: 90 });
-      if (!pd.alive && p.alive){ p.alive = false; p.cursed = false; p.curseRing.setVisible(false); p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText('P'+(i+1)+' X'); }
+      if (!pd.alive && p.alive){ p.alive = false; p.cursed = false; p.curseRing.setVisible(false); p.body.setFillStyle(0x333333); p.container.setAlpha(0.55); p.label.setText(playerDisplayName(i)+' X'); }
       p.maxBombs = pd.maxBombs; p.blastRange = pd.blastRange; p.speed = pd.speed; p.cursed = pd.cursed;
       const curseTag = pd.cursed ? ' \u{1F480}' : '';
-      this.hudTexts[i].setText('P'+(i+1)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}` : 'OUT'));
+      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}` : 'OUT'));
       this.hudTexts[i].setColor(pd.alive ? (pd.cursed ? '#c39bd3' : '#eee') : '#666');
     });
 
@@ -1838,6 +1862,10 @@ setupTouchControls();
 // survives a page reload without needing any server/account.
 const SETTINGS_KEY = 'mazeBlasterSettings';
 let SOUND_ENABLED = true;
+// Empty string means "no custom name" — playerDisplayName() falls back to the
+// default P1/P2/etc label in that case, so leaving this blank is intentional,
+// not a bug.
+let PLAYER_NAME = '';
 function loadSettings(){
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -1858,6 +1886,11 @@ function loadSettings(){
       const sndSel = document.getElementById('sound-toggle');
       if (sndSel) sndSel.value = SOUND_ENABLED ? 'on' : 'off';
     }
+    if (saved && typeof saved.playerName === 'string'){
+      PLAYER_NAME = saved.playerName.trim().slice(0, 16);
+      const nameInput = document.getElementById('player-name');
+      if (nameInput) nameInput.value = PLAYER_NAME;
+    }
   } catch (e) {
     // Corrupted JSON or storage blocked (private browsing, etc) — just
     // fall back to the defaults instead of breaking the lobby.
@@ -1866,7 +1899,7 @@ function loadSettings(){
 }
 function saveSettings(){
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED, playerName: PLAYER_NAME }));
   } catch (e) {
     // Storage full or unavailable — the choice just won't persist this time.
   }
@@ -1892,6 +1925,11 @@ document.getElementById('game-speed').onchange = e => {
 document.getElementById('sound-toggle').onchange = e => {
   SOUND_ENABLED = e.target.value === 'on';
   SFX.setEnabled(SOUND_ENABLED);
+  saveSettings();
+};
+document.getElementById('player-name').onchange = e => {
+  PLAYER_NAME = e.target.value.trim().slice(0, 16);
+  e.target.value = PLAYER_NAME;
   saveSettings();
 };
 
@@ -1929,9 +1967,12 @@ function showGameUI(){
   document.getElementById('game-wrap').classList.remove('hidden');
   document.getElementById('touch-controls').classList.remove('hidden');
 }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+}
 function refreshPlayerList(){
-  let html = '<div>Player 1 (you, host)</div>';
-  for (let i=0;i<net.conns.length;i++) html += `<div>Player ${i+2} connected</div>`;
+  let html = `<div>${escapeHtml(playerDisplayName(0))} (you, host)</div>`;
+  for (let i=0;i<net.conns.length;i++) html += `<div>${escapeHtml(playerDisplayName(i+1))} connected</div>`;
   document.getElementById('player-list').innerHTML = html;
 }
 
@@ -1996,6 +2037,9 @@ document.getElementById('btn-solo').onclick = () => {
   NET_BOT_COUNT = Math.min(botCount, 3);
   NET_NUM_PLAYERS = 1 + NET_BOT_COUNT;
   NET_IS_SOLO = true;
+  // Bots always keep their default P2/P3/... labels; only the local human
+  // player (index 0) gets the custom name from Options, if any was set.
+  net.names = [PLAYER_NAME || null, null, null, null];
   applyMapSize(SELECTED_MAP_SIZE);
   applySpeedSetting(SELECTED_SPEED);
   showGameUI();
@@ -2020,6 +2064,7 @@ document.getElementById('btn-host').onclick = () => {
     err => { document.getElementById('lobby-msg').textContent = 'Error: ' + (err.message || err); }
   );
   net.onPlayerJoined = () => { NET_NUM_PLAYERS = net.conns.length + 1; refreshPlayerList(); };
+  net.onNameUpdate = () => refreshPlayerList();
 };
 
 document.getElementById('btn-copy').onclick = () => {
