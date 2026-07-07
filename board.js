@@ -9,45 +9,151 @@ function tileRand(seed){
   };
 }
 
-// Grass floor tile: base color plus a scattering of subtle darker/lighter
-// speckles so it reads as mottled turf instead of a flat color swatch.
-function drawFloorTile(scene, r, c){
+// Draws one decorative speckle mark at a tile-local (px,py) offset, in
+// whichever shape the active theme calls for — this is what makes desert
+// sand, snow, jungle floor, and lava each read as a distinct kind of
+// ground rather than just a recolored copy of the grass tile's dots.
+function drawSpeckleMark(gfx, shape, px, py, rad, rand, color, alpha){
+  gfx.fillStyle(color, alpha);
+  gfx.lineStyle(Math.max(1, rad*0.6), color, alpha);
+  switch (shape){
+    case 'grain': { // desert: short diagonal sand-grain line
+      const len = rad * 2.2;
+      const ang = (rand() * 0.6 - 0.3) + Math.PI*0.25;
+      const dx = Math.cos(ang)*len/2, dy = Math.sin(ang)*len/2;
+      gfx.beginPath();
+      gfx.moveTo(px-dx, py-dy);
+      gfx.lineTo(px+dx, py+dy);
+      gfx.strokePath();
+      break;
+    }
+    case 'fleck': { // snow: tiny diamond crystal
+      const s = rad * 1.4;
+      gfx.beginPath();
+      gfx.moveTo(px, py-s);
+      gfx.lineTo(px+s, py);
+      gfx.lineTo(px, py+s);
+      gfx.lineTo(px-s, py);
+      gfx.closePath();
+      gfx.fillPath();
+      break;
+    }
+    case 'vine': { // jungle: small curved hook, like a stray vine/leaf
+      const s = rad * 2.4;
+      gfx.beginPath();
+      gfx.moveTo(px-s*0.5, py+s*0.4);
+      gfx.lineTo(px, py-s*0.3);
+      gfx.lineTo(px+s*0.5, py+s*0.2);
+      gfx.strokePath();
+      break;
+    }
+    case 'ember': { // lava: glowing ember dot, brighter/hotter than a plain speckle
+      gfx.fillCircle(px, py, rad*1.15);
+      break;
+    }
+    case 'rivet': { // space station: tiny bolt head, a circle with a cross slot
+      const r2 = rad*1.1, cross = rad*0.9;
+      gfx.fillCircle(px, py, r2);
+      gfx.beginPath();
+      gfx.moveTo(px-cross, py); gfx.lineTo(px+cross, py);
+      gfx.moveTo(px, py-cross); gfx.lineTo(px, py+cross);
+      gfx.strokePath();
+      break;
+    }
+    case 'swirl': { // candy land: small S-curve, like a swirled candy stripe
+      const s = rad*1.8;
+      gfx.beginPath();
+      gfx.moveTo(px-s, py-s*0.4);
+      gfx.lineTo(px-s*0.2, py-s*0.4);
+      gfx.lineTo(px, py);
+      gfx.lineTo(px+s*0.2, py+s*0.4);
+      gfx.lineTo(px+s, py+s*0.4);
+      gfx.strokePath();
+      break;
+    }
+    case 'bubble': { // swamp/bog: small ring, like a rising gas bubble
+      gfx.strokeCircle(px, py, rad*1.2);
+      break;
+    }
+    case 'crystal': { // cave: small angular mineral shard
+      const s = rad*1.6;
+      gfx.beginPath();
+      gfx.moveTo(px, py-s*1.3);
+      gfx.lineTo(px+s*0.6, py-s*0.1);
+      gfx.lineTo(px+s*0.2, py+s*1.1);
+      gfx.lineTo(px-s*0.5, py+s*0.3);
+      gfx.closePath();
+      gfx.fillPath();
+      break;
+    }
+    case 'spark': { // neon/cyber: short jagged electric line, like 'grain' but zigzagged
+      const len = rad*2.4;
+      gfx.beginPath();
+      gfx.moveTo(px-len/2, py);
+      gfx.lineTo(px-len/6, py-rad*0.8);
+      gfx.lineTo(px+len/6, py+rad*0.6);
+      gfx.lineTo(px+len/2, py-rad*0.3);
+      gfx.strokePath();
+      break;
+    }
+    case 'bone': { // graveyard: small X mark, like crossed bones
+      const s = rad*1.3;
+      gfx.beginPath();
+      gfx.moveTo(px-s, py-s); gfx.lineTo(px+s, py+s);
+      gfx.moveTo(px+s, py-s); gfx.lineTo(px-s, py+s);
+      gfx.strokePath();
+      break;
+    }
+    default: // 'dot': classic grass speckle
+      gfx.fillCircle(px, py, rad);
+  }
+}
+
+// Floor tile: base color plus a scattering of subtle darker/lighter
+// speckles (shape depends on the active theme) so it reads as mottled
+// ground instead of a flat color swatch.
+function drawFloorTile(scene, r, c, themeKey){
+  const theme = THEMES[themeKey || ACTIVE_THEME] || THEMES.default;
   const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
-  const shade = (r+c) % 2 === 0 ? 0x2f6b2f : 0x276227;
+  const parity = (r+c) % 2 === 0 ? 0 : 1;
+  const shade = parity === 0 ? theme.floor.even : theme.floor.odd;
   scene.add.rectangle(x, y, TILE-2, TILE-2, shade);
 
   const rand = tileRand(r*73856093 ^ c*19349663);
   const speck = scene.add.graphics();
   speck.x = x; speck.y = y;
-  const lightColor = (r+c) % 2 === 0 ? 0x3d7d3d : 0x347334;
-  const darkColor  = (r+c) % 2 === 0 ? 0x255525 : 0x1f4a1f;
-  const dotCount = 7 + Math.floor(rand()*5);
+  const lightColor = theme.floor.light[parity];
+  const darkColor  = theme.floor.dark[parity];
+  // Lava's embers are sparser but punchier than the other themes' speckles.
+  const dotCount = theme.speckle === 'ember' ? 4 + Math.floor(rand()*4) : 7 + Math.floor(rand()*5);
+  const baseAlpha = theme.speckle === 'ember' ? 0.55 : 0.3;
   for (let i = 0; i < dotCount; i++){
     const px = (rand()-0.5) * (TILE-10);
     const py = (rand()-0.5) * (TILE-10);
     const rad = (1.2 + rand()*1.6) * UI_SCALE;
-    speck.fillStyle(rand() < 0.5 ? lightColor : darkColor, 0.3);
-    speck.fillCircle(px, py, rad);
+    const color = rand() < 0.5 ? lightColor : darkColor;
+    drawSpeckleMark(speck, theme.speckle, px, py, rad, rand, color, baseAlpha);
   }
 }
 
 // Indestructible wall/pillar block: beveled "solid stone" look — light
 // top/left bevel faces, dark bottom/right bevel faces, a slightly recessed
 // inner face, and faint seam lines suggesting a carved stone block.
-function drawWallBlock(scene, r, c){
+function drawWallBlock(scene, r, c, themeKey){
+  const theme = THEMES[themeKey || ACTIVE_THEME] || THEMES.default;
   const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
   const s = TILE - 2;
   const half = s / 2;
   const bevel = Math.max(4, Math.round(TILE * 0.1));
-  const baseColor  = 0x656b76;
-  const lightColor = 0x9aa1ac;
-  const darkColor  = 0x35383e;
-  const innerColor = 0x5a5f69;
+  const baseColor  = theme.wall.base;
+  const lightColor = theme.wall.light;
+  const darkColor  = theme.wall.dark;
+  const innerColor = theme.wall.inner;
 
   const container = scene.add.container(x, y);
 
   const body = scene.add.rectangle(0, 0, s, s, baseColor)
-    .setStrokeStyle(Math.round(2*UI_SCALE), 0x24262b);
+    .setStrokeStyle(Math.round(2*UI_SCALE), theme.wall.stroke);
   container.add(body);
 
   const bevelGfx = scene.add.graphics();
@@ -91,7 +197,7 @@ function drawWallBlock(scene, r, c){
   container.add(inner);
 
   const seam = scene.add.graphics();
-  seam.lineStyle(Math.max(1, Math.round(1.5*UI_SCALE)), 0x484c54, 0.6);
+  seam.lineStyle(Math.max(1, Math.round(1.5*UI_SCALE)), theme.wall.seam, 0.6);
   seam.beginPath();
   seam.moveTo(-half+bevel, 0); seam.lineTo(half-bevel, 0);
   seam.moveTo(0, -half+bevel); seam.lineTo(0, half-bevel);
@@ -99,10 +205,15 @@ function drawWallBlock(scene, r, c){
   container.add(seam);
 }
 
-function buildStaticBoard(scene, pillars = true){
+function buildStaticBoard(scene, pillars = true, themeKey){
+  // themeKey defaults to the module-level ACTIVE_THEME (set via applyTheme()
+  // before the match starts, and synced host->client alongside the pillar
+  // flag/teleporter count); an explicit key can still be passed for things
+  // like a themed lobby preview thumbnail without touching global state.
+  const theme = themeKey || ACTIVE_THEME;
   for (let r = 0; r < ROWS; r++){
     for (let c = 0; c < COLS; c++){
-      drawFloorTile(scene, r, c);
+      drawFloorTile(scene, r, c, theme);
     }
   }
   const solid = [];
@@ -113,7 +224,7 @@ function buildStaticBoard(scene, pillars = true){
       const isPillar = pillars && r % 2 === 0 && c % 2 === 0;
       if (isBorder || isPillar){
         solid[r][c] = true;
-        drawWallBlock(scene, r, c);
+        drawWallBlock(scene, r, c, theme);
       }
     }
   }
@@ -128,7 +239,8 @@ const CRACK_VARIANTS = [
   [[-0.6,0.1, -0.1,0.0, 0.3,-0.45],   [0.15,0.6, -0.05,0.1, -0.55,-0.25]],
   [[-0.15,-0.6, 0.1,-0.1, 0.55,0.15], [-0.5,0.5, -0.15,0.05, 0.2,-0.35]],
 ];
-function drawBlock(scene, r, c){
+function drawBlock(scene, r, c, themeKey){
+  const theme = THEMES[themeKey || ACTIVE_THEME] || THEMES.default;
   const x = c*TILE + TILE/2, y = HUD_H + r*TILE + TILE/2;
   const container = scene.add.container(x, y);
 
@@ -136,15 +248,15 @@ function drawBlock(scene, r, c){
   const half = s / 2;
   const bevel = Math.max(3, Math.round(TILE * 0.07)); // shallower than the stone walls' bevel
 
-  const body = scene.add.rectangle(0, 0, s, s, 0x8a5a2e).setStrokeStyle(Math.round(2*UI_SCALE), 0x5c3b1e);
+  const body = scene.add.rectangle(0, 0, s, s, theme.crate.body).setStrokeStyle(Math.round(2*UI_SCALE), theme.crate.stroke);
   container.add(body);
 
   // Beveled crate faces (lighter top/left catching light, darker bottom/right
   // in shadow) give the crate a raised, chunky look — but kept shallow and
-  // paired with the cracks below so it still reads as breakable wood, not a
+  // paired with the cracks below so it still reads as breakable, not a
   // solid stone block.
   const bevelGfx = scene.add.graphics();
-  bevelGfx.fillStyle(0xb07a3e, 0.9); // lit top/left faces
+  bevelGfx.fillStyle(theme.crate.bevelLight, 0.9); // lit top/left faces
   bevelGfx.beginPath();
   bevelGfx.moveTo(-half, -half);
   bevelGfx.lineTo(half, -half);
@@ -159,7 +271,7 @@ function drawBlock(scene, r, c){
   bevelGfx.lineTo(-half, half);
   bevelGfx.closePath();
   bevelGfx.fillPath();
-  bevelGfx.fillStyle(0x5c3b1e, 0.9); // shadowed bottom/right faces
+  bevelGfx.fillStyle(theme.crate.bevelDark, 0.9); // shadowed bottom/right faces
   bevelGfx.beginPath();
   bevelGfx.moveTo(-half, half);
   bevelGfx.lineTo(half, half);
@@ -176,16 +288,16 @@ function drawBlock(scene, r, c){
   bevelGfx.fillPath();
   container.add(bevelGfx);
 
-  // Recessed inner plank face, slightly different tone from the bevel edges
-  // so the crate reads as a raised block rather than a flat sticker.
-  const inner = scene.add.rectangle(0, 0, s - bevel*2, s - bevel*2, 0x8a5a2e);
+  // Recessed inner face, slightly different tone from the bevel edges so
+  // the crate reads as a raised block rather than a flat sticker.
+  const inner = scene.add.rectangle(0, 0, s - bevel*2, s - bevel*2, theme.crate.inner);
   container.add(inner);
 
   // Crack lines make it obvious at a glance that this block can be broken
   // (as opposed to the solid indestructible pillars/walls).
   const variant = CRACK_VARIANTS[Math.abs(r*3 + c*7) % CRACK_VARIANTS.length];
   const cracks = scene.add.graphics();
-  cracks.lineStyle(Math.max(1, Math.round(2*UI_SCALE)), 0x4a2f18, 0.9);
+  cracks.lineStyle(Math.max(1, Math.round(2*UI_SCALE)), theme.crate.crack, 0.9);
   variant.forEach(pts => {
     cracks.beginPath();
     cracks.moveTo(pts[0]*half, pts[1]*half);
@@ -199,7 +311,7 @@ function drawBlock(scene, r, c){
   // crack lines alone, especially at a glance or small size.
   const chip = TILE*0.16;
   const chipGfx = scene.add.graphics();
-  chipGfx.fillStyle(0x5c3b1e, 1);
+  chipGfx.fillStyle(theme.crate.bevelDark, 1);
   chipGfx.beginPath();
   chipGfx.moveTo(half - chip, -half);
   chipGfx.lineTo(half, -half);

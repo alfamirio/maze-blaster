@@ -73,6 +73,115 @@ const SCENARIOS = {
 };
 let SELECTED_SCENARIO = 'standard'; // set by the map picker, applied when a Solo game starts
 
+// ---- Visual scenery themes ---------------------------------------------
+// A theme is purely cosmetic — it swaps the palette (and speckle/particle
+// style) that drawFloorTile/drawWallBlock/drawBlock in board.js paint the
+// floor, walls, and crates with. It never touches board *shape* (that's
+// still SCENARIOS/pillars/etc.), so any theme works with any scenario.
+// 'speckle' selects which little decorative mark scatters across each
+// floor tile (see drawSpeckleMark in board.js) so each theme reads as a
+// distinct kind of ground, not just a recolored copy of the grass tile.
+const THEMES = {
+  default: {
+    label: 'Grassland',
+    speckle: 'dot',
+    floor:  { even:0x2f6b2f, odd:0x276227, light:[0x3d7d3d,0x347334], dark:[0x255525,0x1f4a1f] },
+    wall:   { base:0x656b76, light:0x9aa1ac, dark:0x35383e, inner:0x5a5f69, stroke:0x24262b, seam:0x484c54 },
+    crate:  { body:0x8a5a2e, bevelLight:0xb07a3e, bevelDark:0x5c3b1e, inner:0x8a5a2e, stroke:0x5c3b1e, crack:0x4a2f18 },
+  },
+  desert: {
+    label: 'Desert',
+    speckle: 'grain',
+    floor:  { even:0xcda06a, odd:0xc0925a, light:[0xe0bd8a,0xd4ae78], dark:[0xa9814f,0x9c7444] },
+    wall:   { base:0xb08a55, light:0xd9b884, dark:0x6e5330, inner:0x9c7746, stroke:0x4d3a20, seam:0x8a6a3e },
+    crate:  { body:0xc9a15b, bevelLight:0xe6c485, bevelDark:0x8a6a35, inner:0xc9a15b, stroke:0x6e5320, crack:0x5c4620 },
+  },
+  snow: {
+    label: 'Snow',
+    speckle: 'fleck',
+    floor:  { even:0xdce8f0, odd:0xcedbe6, light:[0xf5fbff,0xe9f3fa], dark:[0xb7c9d6,0xa8bcca] },
+    wall:   { base:0x9fb4c2, light:0xe6f3fa, dark:0x536878, inner:0x8398a8, stroke:0x33434e, seam:0x6f8898 },
+    crate:  { body:0xa9c6d6, bevelLight:0xd6ecf5, bevelDark:0x5f7a89, inner:0xa9c6d6, stroke:0x415662, crack:0x3d5560 },
+  },
+  jungle: {
+    label: 'Jungle',
+    speckle: 'vine',
+    floor:  { even:0x1f5c33, odd:0x184e2a, light:[0x2c7a44,0x226637], dark:[0x123d21,0x0d331a] },
+    wall:   { base:0x5c6b52, light:0x8a9e78, dark:0x2f3a29, inner:0x4d5b45, stroke:0x1f271c, seam:0x445140 },
+    crate:  { body:0x5e4326, bevelLight:0x7d5c34, bevelDark:0x3a2916, inner:0x5e4326, stroke:0x2c1f10, crack:0x241a0c },
+  },
+  lava: {
+    label: 'Lava',
+    speckle: 'ember',
+    floor:  { even:0x2a1614, odd:0x24110f, light:[0xe8622a,0xd94f1c], dark:[0x140a09,0x0f0706] },
+    wall:   { base:0x3a2422, light:0x6b3a28, dark:0x1a0f0e, inner:0x2e1c1a, stroke:0x120a09, seam:0xc0431f },
+    crate:  { body:0x4a2a1c, bevelLight:0x8a4a26, bevelDark:0x241209, inner:0x4a2a1c, stroke:0x180d06, crack:0xe8622a },
+  },
+  space_station: {
+    label: 'Space Station',
+    speckle: 'rivet',
+    floor:  { even:0x1b2530, odd:0x161e27, light:[0x3a4d5e,0x33445a], dark:[0x0e141b,0x0a0f14] },
+    wall:   { base:0x7a8896, light:0xc3d1dc, dark:0x3f4a54, inner:0x66727d, stroke:0x252b31, seam:0x8fa0ac },
+    crate:  { body:0x5a6570, bevelLight:0x8a99a6, bevelDark:0x333d47, inner:0x5a6570, stroke:0x262c33, crack:0xffcc00 },
+  },
+  candy_land: {
+    label: 'Candy Land',
+    speckle: 'swirl',
+    floor:  { even:0xffd0e6, odd:0xc8f2df, light:[0xffe8f2,0xe0faf0], dark:[0xe6a8c8,0x9fd9c0] },
+    wall:   { base:0xe74c6f, light:0xffe0e8, dark:0x9c1f3f, inner:0xd23a5c, stroke:0x7a1530, seam:0xffffff },
+    crate:  { body:0x9b59d0, bevelLight:0xd9b3f5, bevelDark:0x5e2f80, inner:0x9b59d0, stroke:0x4a2266, crack:0xffe066 },
+  },
+  swamp: {
+    label: 'Swamp',
+    speckle: 'bubble',
+    floor:  { even:0x3a3f24, odd:0x2f331d, light:[0x565c33,0x484d2b], dark:[0x222514,0x1b1d10] },
+    wall:   { base:0x4a4530, light:0x726a44, dark:0x2a2618, inner:0x3e3a24, stroke:0x1c1a10, seam:0x5c5636 },
+    crate:  { body:0x4f3d22, bevelLight:0x6f5936, bevelDark:0x2c2113, inner:0x4f3d22, stroke:0x241b0f, crack:0x6b8f3f },
+  },
+  cave: {
+    label: 'Cave',
+    speckle: 'crystal',
+    floor:  { even:0x141416, odd:0x101012, light:[0x2c2e33,0x26282c], dark:[0x08080a,0x060607] },
+    wall:   { base:0x3a3a3e, light:0x5c5c62, dark:0x1c1c1f, inner:0x2e2e32, stroke:0x101012, seam:0x4a4a50 },
+    crate:  { body:0x35363c, bevelLight:0x53555e, bevelDark:0x1e1f23, inner:0x35363c, stroke:0x141416, crack:0x4fd3ff },
+  },
+  cyber: {
+    label: 'Cyber',
+    speckle: 'spark',
+    floor:  { even:0x0b0e17, odd:0x080a12, light:[0x1c2a4a,0x162238], dark:[0x05060a,0x040508] },
+    wall:   { base:0x1a1f2e, light:0x6be0ff, dark:0x0c0f18, inner:0x232a3d, stroke:0x080a10, seam:0xb066ff },
+    crate:  { body:0x232838, bevelLight:0x4fd3ff, bevelDark:0x11141d, inner:0x232838, stroke:0x0a0c12, crack:0xff4fd3 },
+  },
+  graveyard: {
+    label: 'Graveyard',
+    speckle: 'bone',
+    floor:  { even:0x352f3a, odd:0x2c2732, light:[0x4d4655,0x413a48], dark:[0x1e1a22,0x18151c] },
+    wall:   { base:0x5a5860, light:0x8a8790, dark:0x2e2c32, inner:0x4a484e, stroke:0x1a191d, seam:0x6e6c74 },
+    crate:  { body:0x3d2e35, bevelLight:0x5c4650, bevelDark:0x211920, inner:0x3d2e35, stroke:0x160f14, crack:0x2a1e24 },
+  },
+};
+// Insertion order above also drives the lobby's theme dropdown option order.
+const THEME_ORDER = Object.keys(THEMES);
+// 'random' is a sentinel meaning "resolve to a random real theme when the
+// match starts" — it's never itself a key into THEMES.
+let SELECTED_THEME = 'random'; // set by the lobby's Theme dropdown
+// The theme actually in effect for the current match. Only the host ever
+// *picks* this (resolving 'random' via applyTheme); clients just receive
+// whatever key the host broadcasts and store it here directly so every
+// viewer's board.js draw calls agree, the same way NET_PILLARS etc. work.
+let ACTIVE_THEME = 'default';
+// Resolves SELECTED_THEME (which may be 'random') to a concrete THEMES key,
+// stores it in ACTIVE_THEME, and returns it so the host can broadcast the
+// resolved value to clients (see buildStaticBoard's callers in
+// host-scene.js / client-scene.js).
+function applyTheme(key){
+  const resolved = (key === 'random')
+    ? THEME_ORDER[Math.floor(Math.random() * THEME_ORDER.length)]
+    : (THEMES[key] ? key : 'default');
+  ACTIVE_THEME = resolved;
+  return resolved;
+}
+
 // ---- Deterministic map seed --------------------------------------------
 // Turns an arbitrary string into a reproducible board layout: the same seed
 // always yields the same crate/teleporter placement for a given scenario,

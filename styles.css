@@ -31,6 +31,9 @@
   #map-seed-input::placeholder { color:#555; font-family:system-ui, sans-serif; }
   #btn-apply-seed { border:none; background:#3a4048; color:#ccc; font-size:11px; padding:4px 9px; border-radius:6px; cursor:pointer; }
   #btn-apply-seed:hover { background:#454c56; color:#fff; }
+  #map-theme-row { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12px; color:#888; }
+  .map-theme-label { color:#666; }
+  #map-theme-select { background:#0e1013; border:1px solid #2a2f37; border-radius:6px; padding:3px 8px; color:#eee; font-size:12px; }
 
   .mode-col { display:flex; flex-direction:column; }
   .mode-toggle { display:flex; background:#0e1013; border-radius:8px; padding:3px; margin-bottom:14px; }

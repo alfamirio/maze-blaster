@@ -18,6 +18,12 @@ class HostScene extends Phaser.Scene {
     // just before the scene was created, so scaling it here on top is safe —
     // it can't compound across matches or scenarios.
     if (scenario.fuseMult && scenario.fuseMult !== 1) BOMB_FUSE = Math.round(BOMB_FUSE * scenario.fuseMult);
+    // Resolves the lobby's Theme picker (which may be the 'random' sentinel)
+    // to a concrete THEMES key and stores it in ACTIVE_THEME. Done fresh on
+    // every create() — same as the seed above — so a restart (Alt+R) with
+    // 'random' selected re-rolls a new scenery theme each time, rather than
+    // freezing on whatever the very first roll landed on.
+    applyTheme(SELECTED_THEME);
     this.solid = buildStaticBoard(this, scenario.pillars);
     this.blocks = [];       // rect or null
     this.blocksGridBool = [];
@@ -271,7 +277,7 @@ class HostScene extends Phaser.Scene {
     this.matchStartTime = Date.now();
     this.frozenElapsed = 0;
 
-    net.broadcastStart({ blocksGrid: this.blocksGridBool, pillars: !!scenario.pillars, teleporters: this._teleporterPairsList, fogOfWar: this.fogOfWar, shrinkingArena: this.shrinkingArena, dayNightCycle: this.dayNightCycle, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED, seed: this.currentSeed });
+    net.broadcastStart({ blocksGrid: this.blocksGridBool, pillars: !!scenario.pillars, teleporters: this._teleporterPairsList, fogOfWar: this.fogOfWar, shrinkingArena: this.shrinkingArena, dayNightCycle: this.dayNightCycle, numPlayers: NET_NUM_PLAYERS, cols: COLS, rows: ROWS, speed: SELECTED_SPEED, seed: this.currentSeed, theme: ACTIVE_THEME });
   }
 
   // Walls and destructible blocks always block movement, regardless of any

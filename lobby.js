@@ -41,6 +41,11 @@ function loadSettings(){
       const nameInput = document.getElementById('player-name');
       if (nameInput) nameInput.value = PLAYER_NAME;
     }
+    if (saved && (saved.theme === 'random' || THEMES[saved.theme])){
+      SELECTED_THEME = saved.theme;
+      const themeSel = document.getElementById('map-theme-select');
+      if (themeSel) themeSel.value = SELECTED_THEME;
+    }
   } catch (e) {
     // Corrupted JSON or storage blocked (private browsing, etc) — just
     // fall back to the defaults instead of breaking the lobby.
@@ -49,7 +54,7 @@ function loadSettings(){
 }
 function saveSettings(){
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED, fpsCap: SELECTED_FPS_CAP, playerName: PLAYER_NAME }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED, fpsCap: SELECTED_FPS_CAP, playerName: PLAYER_NAME, theme: SELECTED_THEME }));
   } catch (e) {
     // Storage full or unavailable — the choice just won't persist this time.
   }
@@ -450,6 +455,10 @@ function applyMapSeedFromUrl(){
 }
 document.getElementById('map-seed-value').textContent = MAP_SEED;
 applyMapSeedFromUrl();
+document.getElementById('map-theme-select').onchange = e => {
+  SELECTED_THEME = e.target.value;
+  saveSettings();
+};
 document.getElementById('btn-reroll-seed').onclick = regenerateMapSeed;
 document.getElementById('map-seed-value').onclick = () => {
   navigator.clipboard.writeText(MAP_SEED);
@@ -575,6 +584,11 @@ net.onStart = data => {
   NET_FOG_OF_WAR = !!data.fogOfWar;
   NET_SHRINKING_ARENA = !!data.shrinkingArena;
   NET_DAY_NIGHT_CYCLE = !!data.dayNightCycle;
+  // The host already resolved 'random' to a concrete theme (see applyTheme()
+  // in HostScene.create()) — clients just store whatever key it broadcasts
+  // so their own board.js draw calls (which default to ACTIVE_THEME) match
+  // the host's board pixel-for-pixel, the same way NET_PILLARS etc. work.
+  ACTIVE_THEME = (data.theme && THEMES[data.theme]) ? data.theme : 'default';
   COLS = data.cols; ROWS = data.rows; SPAWNS = buildSpawns();
   applySpeedSetting(data.speed);
   showGameUI();
