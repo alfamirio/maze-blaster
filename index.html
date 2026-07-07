@@ -384,44 +384,45 @@ const SFX = (() => {
     });
   }
 
-  // Bright major-triad fanfare, rising in pitch, for winning the match.
+  // Soft two-note major rise for winning the match — a gentle "lift" rather
+  // than a full fanfare.
   function win(){
     const ac = getCtx(); if (!ac) return;
     const t0 = ac.currentTime;
-    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5]; // C5 E5 G5 C6 E6
+    const notes = [523.25, 659.25]; // C5 E5
     notes.forEach((freq, i) => {
-      const t = t0 + i*0.11;
+      const t = t0 + i*0.13;
       const osc = ac.createOscillator();
       const gain = ac.createGain();
-      osc.type = 'triangle';
+      osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.001, t);
-      gain.gain.exponentialRampToValueAtTime(0.26, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.12, t + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
       osc.connect(gain).connect(ac.destination);
       osc.start(t);
-      osc.stop(t + 0.42);
+      osc.stop(t + 0.37);
     });
   }
 
-  // Descending minor sequence with a detuned sawtooth "wah" for losing.
+  // Soft two-note minor dip for losing — a quiet, low-key "aw" rather than a
+  // full descending sequence.
   function lose(){
     const ac = getCtx(); if (!ac) return;
     const t0 = ac.currentTime;
-    const notes = [392, 349.23, 311.13, 261.63]; // G4 F4 Eb4 C4
+    const notes = [349.23, 311.13]; // F4 Eb4
     notes.forEach((freq, i) => {
-      const t = t0 + i*0.16;
+      const t = t0 + i*0.15;
       const osc = ac.createOscillator();
       const gain = ac.createGain();
-      osc.type = 'sawtooth';
+      osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, t);
-      osc.frequency.exponentialRampToValueAtTime(freq*0.94, t + 0.3);
-      gain.gain.setValueAtTime(0.001, t);
-      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.1, t + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
       osc.connect(gain).connect(ac.destination);
       osc.start(t);
-      osc.stop(t + 0.34);
+      osc.stop(t + 0.32);
     });
   }
 
