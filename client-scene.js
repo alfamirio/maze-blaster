@@ -78,20 +78,17 @@ class ClientScene extends Phaser.Scene {
       p.hasKick = !!pd.hasKick; p.shieldCount = pd.shieldCount||0;
       p.pierce = !!pd.pierce; p.hasDetonator = !!pd.hasDetonator; p.hasMine = !!pd.hasMine; p.mineArmed = !!pd.mineArmed;
       updateShieldRingVisual(p);
-      const curseTag = pd.cursed ? ' \u{1F480}' : '';
-      const kickTag = pd.hasKick ? ' \u{1F45F}' : '';
-      const shieldTag = pd.shieldCount > 0 ? ` \u{1F6E1}${pd.shieldCount}` : '';
-      const pierceTag = pd.pierce ? ' \u{1F4A5}' : '';
-      const detonatorTag = pd.hasDetonator ? ' \u{1F4E1}' : '';
-      const mineTag = pd.hasMine ? (pd.mineArmed ? ' \u{1F7E0}' : ' \u26AB') : '';
-      const reconnectTag = pd.reconnecting ? ' \u23F3' : '';
       // data.pings is indexed by host slot (player index - 1); player 0 is
       // always the host itself, which has no connection to measure.
       const pingVal = (i > 0 && data.pings) ? data.pings[i-1] : null;
-      const pingTag = (pingVal != null && !pd.reconnecting) ? ` ${pingQualityEmoji(pingVal)}${pingVal}ms` : '';
-      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${mineTag}${reconnectTag}${pingTag}` : 'OUT'));
-      this.hudTexts[i].setColor(pd.alive ? (pd.reconnecting ? '#f5b041' : (pd.cursed ? '#c39bd3' : '#eee')) : '#666');
-      if (pd.alive) p.container.setAlpha(pd.reconnecting ? 0.55 : 1);
+      const suffix = buildStatusTagSuffix({
+        cursed: pd.cursed, hasKick: pd.hasKick, shieldCount: pd.shieldCount,
+        pierce: pd.pierce, hasDetonator: pd.hasDetonator, hasMine: pd.hasMine,
+        mineActive: pd.mineArmed, reconnecting: pd.reconnecting, pingVal,
+      });
+      this.hudTexts[i].setText(playerDisplayName(i)+': '+(pd.alive ? `bombs ${pd.maxBombs} / range ${pd.blastRange} / speed ${pd.speed}${suffix}` : 'OUT'));
+      this.hudTexts[i].setColor(statusColor(pd.alive, pd.reconnecting, pd.cursed));
+      if (pd.alive) p.container.setAlpha(statusAlpha(true, pd.reconnecting));
     });
 
     for (let r=0;r<ROWS;r++){

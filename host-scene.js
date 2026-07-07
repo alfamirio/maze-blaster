@@ -377,18 +377,32 @@ class HostScene extends Phaser.Scene {
     else this.placeRemoteBomb(p);
   }
 
-  placeRemoteBomb(p){
-    if (this.bombs[p.row][p.col]) return; // tile already holds a bomb
-    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'remoteBomb', player:p.id, row:p.row, col:p.col, range:p.blastRange });
+  // Shared by placeBomb/placeRemoteBomb/placeMine below: all three do the
+  // exact same setup (record the event, play the placement sound, draw the
+  // bomb visual, build the bomb object, and register it into this.bombs /
+  // this.activeBombs) and only differ in which optional flags apply and
+  // what happens right after — a normal bomb schedules its own fuse, a
+  // remote bomb waits on the owner's detonate button, and a mine waits on
+  // checkMines(). Centralizing this means a new bomb-object field (or a
+  // change to how placement gets recorded) only needs to happen in one place.
+  spawnBomb(p, { type, remote=false, mine=false, armAt=null } = {}){
+    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type, player:p.id, row:p.row, col:p.col, range:p.blastRange });
     SFX.bombPlaced();
     const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
-    const gfx = createBombVisual(this, x, y, true);
-    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, pierce:!!p.pierce, placedAt:this.time.now, remote:true };
+    const gfx = createBombVisual(this, x, y, remote, mine);
+    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, pierce:!!p.pierce, placedAt:this.time.now };
+    if (remote) bomb.remote = true;
+    if (mine){ bomb.mine = true; bomb.armAt = armAt; }
     this.bombs[p.row][p.col] = bomb;
     this.activeBombs.push(bomb);
-    p.remoteBomb = bomb;
+    return bomb;
+  }
+
+  placeRemoteBomb(p){
+    if (this.bombs[p.row][p.col]) return; // tile already holds a bomb
     // No delayedCall here — unlike a normal bomb, this one only goes off
     // when detonate() is called again.
+    p.remoteBomb = this.spawnBomb(p, { type:'remoteBomb', remote:true });
   }
 
   checkPowerupPickup(p){
@@ -418,15 +432,8 @@ class HostScene extends Phaser.Scene {
   placeBomb(p){
     if (!p.alive) return;
     if (this.bombs[p.row][p.col]) return;
-    const active = this.countActiveBombs(p);
-    if (active >= p.maxBombs) return;
-    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'bomb', player:p.id, row:p.row, col:p.col, range:p.blastRange });
-    SFX.bombPlaced();
-    const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
-    const gfx = createBombVisual(this, x, y);
-    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, pierce:!!p.pierce, placedAt:this.time.now };
-    this.bombs[p.row][p.col] = bomb;
-    this.activeBombs.push(bomb);
+    if (this.countActiveBombs(p) >= p.maxBombs) return;
+    const bomb = this.spawnBomb(p, { type:'bomb' });
     this.time.delayedCall(BOMB_FUSE, () => this.explodeBomb(bomb));
   }
 
@@ -441,13 +448,7 @@ class HostScene extends Phaser.Scene {
   placeMine(p){
     if (!p.alive || !p.hasMine || p.activeMine) return;
     if (this.bombs[p.row][p.col]) return;
-    if (this.recording) this.recording.events.push({ t: Math.round(this.time.now), type:'mine', player:p.id, row:p.row, col:p.col, range:p.blastRange });
-    SFX.bombPlaced();
-    const x = p.col*TILE + TILE/2, y = HUD_H + p.row*TILE + TILE/2;
-    const gfx = createBombVisual(this, x, y, false, true);
-    const bomb = { row:p.row, col:p.col, owner:p, exploded:false, gfx, range:p.blastRange, pierce:!!p.pierce, placedAt:this.time.now, mine:true, armAt:this.time.now + MINE_ARM_DELAY };
-    this.bombs[p.row][p.col] = bomb;
-    this.activeBombs.push(bomb);
+    const bomb = this.spawnBomb(p, { type:'mine', mine:true, armAt: this.time.now + MINE_ARM_DELAY });
     p.activeMine = bomb;
     this.time.delayedCall(MINE_FUSE_MS, () => this.explodeBomb(bomb));
   }
@@ -646,23 +647,21 @@ class HostScene extends Phaser.Scene {
     for (let i = 0; i < NET_NUM_PLAYERS; i++){
       const p = this.players[i];
       const tag = this.controllers[i] === 'bot' ? '\u{1F916}' : '';
-      const curseTag = p.curse ? ' \u{1F480}' : '';
-      const kickTag = p.hasKick ? ' \u{1F45F}' : '';
-      const shieldTag = p.shieldCount > 0 ? ` \u{1F6E1}${p.shieldCount}` : '';
-      const pierceTag = p.pierce ? ' \u{1F4A5}' : '';
-      const detonatorTag = p.hasDetonator ? ' \u{1F4E1}' : '';
-      const mineTag = p.hasMine ? (p.activeMine ? ' \u{1F7E0}' : ' \u26AB') : '';
-      const reconnectTag = this.isPendingReconnect(i) ? ' \u23F3' : '';
+      const reconnecting = this.isPendingReconnect(i);
       // Ping only applies to real network players — solo/bot slots have no
       // connection to measure — and only once a slot's first ping reply has
       // actually landed (net.pingMs[i-1] starts out null).
-      const pingVal = (this.controllers[i] === 'remote' && !this.isPendingReconnect(i)) ? net.pingMs[i-1] : null;
-      const pingTag = (pingVal != null) ? ` ${pingQualityEmoji(pingVal)}${pingVal}ms` : '';
-      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${curseTag}${kickTag}${shieldTag}${pierceTag}${detonatorTag}${mineTag}${reconnectTag}${pingTag}` : 'OUT'));
-      this.hudTexts[i].setColor(p.alive ? (this.isPendingReconnect(i) ? '#f5b041' : (p.curse ? '#c39bd3' : '#eee')) : '#666');
+      const pingVal = (this.controllers[i] === 'remote' && !reconnecting) ? net.pingMs[i-1] : null;
+      const suffix = buildStatusTagSuffix({
+        cursed: !!p.curse, hasKick: p.hasKick, shieldCount: p.shieldCount,
+        pierce: p.pierce, hasDetonator: p.hasDetonator, hasMine: p.hasMine,
+        mineActive: !!p.activeMine, reconnecting, pingVal,
+      });
+      this.hudTexts[i].setText(`${playerDisplayName(i)}${tag} ` + (p.alive ? `B${p.maxBombs}/R${p.blastRange}/S${p.speed}${suffix}` : 'OUT'));
+      this.hudTexts[i].setColor(statusColor(p.alive, reconnecting, !!p.curse));
       // Dim the sprite itself while frozen/pending so it's clear at a glance
       // on the board, not just in the HUD text.
-      p.container.setAlpha(p.alive ? (this.isPendingReconnect(i) ? 0.55 : 1) : 0.55);
+      p.container.setAlpha(statusAlpha(p.alive, reconnecting));
     }
   }
 

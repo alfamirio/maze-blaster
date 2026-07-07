@@ -292,6 +292,38 @@ function pingQualityEmoji(ms){
   return '\u{1F534}';                // 🔴
 }
 
+// Builds the "<curse><kick><shield><pierce><detonator><mine><reconnect><ping>"
+// tag suffix shown after a player's stat line in the HUD. HostScene (driven
+// by the live player object) and ClientScene (driven by the synced snapshot)
+// both show the exact same set of tags derived from what is structurally the
+// same state, just under different field names/shapes — so building the
+// suffix lives here once instead of as two copies that could quietly drift
+// apart (e.g. someone adding a new power-up's tag to only one side).
+// `o` fields: cursed, hasKick, shieldCount, pierce, hasDetonator, hasMine,
+// mineActive (true = armed/orange, false = unarmed/black), reconnecting,
+// pingVal (ms, or null/undefined if not applicable).
+function buildStatusTagSuffix(o){
+  const curseTag = o.cursed ? ' \u{1F480}' : '';
+  const kickTag = o.hasKick ? ' \u{1F45F}' : '';
+  const shieldTag = o.shieldCount > 0 ? ` \u{1F6E1}${o.shieldCount}` : '';
+  const pierceTag = o.pierce ? ' \u{1F4A5}' : '';
+  const detonatorTag = o.hasDetonator ? ' \u{1F4E1}' : '';
+  const mineTag = o.hasMine ? (o.mineActive ? ' \u{1F7E0}' : ' \u26AB') : '';
+  const reconnectTag = o.reconnecting ? ' \u23F3' : '';
+  const pingTag = (o.pingVal != null && !o.reconnecting) ? ` ${pingQualityEmoji(o.pingVal)}${o.pingVal}ms` : '';
+  return curseTag + kickTag + shieldTag + pierceTag + detonatorTag + mineTag + reconnectTag + pingTag;
+}
+// Same idea for the HUD text color and sprite alpha: both host and client
+// derive them from the same three inputs (alive / reconnecting / cursed).
+function statusColor(alive, reconnecting, cursed){
+  if (!alive) return '#666';
+  return reconnecting ? '#f5b041' : (cursed ? '#c39bd3' : '#eee');
+}
+function statusAlpha(alive, reconnecting){
+  if (!alive) return 0.55;
+  return reconnecting ? 0.55 : 1;
+}
+
 function formatMatchTime(ms){
   const totalSec = Math.max(0, Math.round(ms / 1000));
   const m = Math.floor(totalSec / 60);
