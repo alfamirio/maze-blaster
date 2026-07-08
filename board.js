@@ -104,6 +104,59 @@ function drawSpeckleMark(gfx, shape, px, py, rad, rand, color, alpha){
       gfx.strokePath();
       break;
     }
+    case 'gear': { // factory: tiny cog, a ring with four stubby teeth
+      const r2 = rad*0.9, s = rad*1.6;
+      gfx.strokeCircle(px, py, r2);
+      gfx.beginPath();
+      gfx.moveTo(px-s, py); gfx.lineTo(px+s, py);
+      gfx.moveTo(px, py-s); gfx.lineTo(px, py+s);
+      gfx.strokePath();
+      break;
+    }
+    case 'ooze': { // alien: small asymmetric blob, like a drip of slime
+      const s = rad*1.3;
+      gfx.beginPath();
+      gfx.moveTo(px, py-s);
+      gfx.lineTo(px+s*1.1, py-s*0.1);
+      gfx.lineTo(px+s*0.5, py+s*1.1);
+      gfx.lineTo(px-s*0.6, py+s*0.7);
+      gfx.lineTo(px-s*0.9, py-s*0.3);
+      gfx.closePath();
+      gfx.fillPath();
+      break;
+    }
+    case 'wave': { // underwater: small ripple, two stacked shallow arcs
+      const s = rad*1.8;
+      gfx.beginPath();
+      gfx.arc(px-s*0.5, py, s*0.5, Math.PI, 0, false);
+      gfx.arc(px+s*0.5, py, s*0.5, Math.PI, 0, true);
+      gfx.strokePath();
+      break;
+    }
+    case 'glyph': { // temple: small angular carved rune
+      const s = rad*1.5;
+      gfx.beginPath();
+      gfx.moveTo(px, py-s*1.2);
+      gfx.lineTo(px, py+s*1.2);
+      gfx.moveTo(px-s*0.7, py-s*0.4);
+      gfx.lineTo(px+s*0.7, py-s*0.4);
+      gfx.moveTo(px-s*0.7, py+s*0.6);
+      gfx.lineTo(px+s*0.7, py+s*0.6);
+      gfx.strokePath();
+      break;
+    }
+    case 'shell': { // island: small fan-shaped shell, radiating ridge lines
+      const s = rad*1.6;
+      gfx.beginPath();
+      gfx.arc(px, py+s*0.3, s, Math.PI*1.1, Math.PI*1.9, false);
+      gfx.strokePath();
+      gfx.beginPath();
+      gfx.moveTo(px, py+s*0.3); gfx.lineTo(px, py-s*0.7);
+      gfx.moveTo(px, py+s*0.3); gfx.lineTo(px-s*0.6, py-s*0.4);
+      gfx.moveTo(px, py+s*0.3); gfx.lineTo(px+s*0.6, py-s*0.4);
+      gfx.strokePath();
+      break;
+    }
     default: // 'dot': classic grass speckle
       gfx.fillCircle(px, py, rad);
   }

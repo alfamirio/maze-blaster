@@ -159,6 +159,41 @@ const THEMES = {
     wall:   { base:0x5a5860, light:0x8a8790, dark:0x2e2c32, inner:0x4a484e, stroke:0x1a191d, seam:0x6e6c74 },
     crate:  { body:0x3d2e35, bevelLight:0x5c4650, bevelDark:0x211920, inner:0x3d2e35, stroke:0x160f14, crack:0x2a1e24 },
   },
+  factory: {
+    label: 'Factory',
+    speckle: 'gear',
+    floor:  { even:0x3a3d42, odd:0x33363b, light:[0x4f5359,0x484c52], dark:[0x24262a,0x1e2023] },
+    wall:   { base:0x6b6f76, light:0xa8adb5, dark:0x35383d, inner:0x5a5e65, stroke:0x1f2124, seam:0xf1c40f },
+    crate:  { body:0x6a6047, bevelLight:0x9a8f68, bevelDark:0x3a3424, inner:0x6a6047, stroke:0x2a2519, crack:0xf1c40f },
+  },
+  alien: {
+    label: 'Alien',
+    speckle: 'ooze',
+    floor:  { even:0x1a0f2e, odd:0x150c26, light:[0x3a1f5c,0x2f1a4d], dark:[0x0d0718,0x0a0513] },
+    wall:   { base:0x3d2a5c, light:0x7a4fd9, dark:0x1f1533, inner:0x4a3470, stroke:0x120c1f, seam:0x39ff8f },
+    crate:  { body:0x2e4a2a, bevelLight:0x4a7a3f, bevelDark:0x1a2b18, inner:0x2e4a2a, stroke:0x0f1a0d, crack:0x39ff8f },
+  },
+  underwater: {
+    label: 'Underwater',
+    speckle: 'wave',
+    floor:  { even:0x0d3b4f, odd:0x0a3242, light:[0x1a5a75,0x154d64], dark:[0x062430,0x051d27] },
+    wall:   { base:0x1e5f78, light:0x4fb8d9, dark:0x0e2e3a, inner:0x1a4f63, stroke:0x081b22, seam:0x7fe0ff },
+    crate:  { body:0x2a5a4a, bevelLight:0x4a8a70, bevelDark:0x163a2e, inner:0x2a5a4a, stroke:0x0e2019, crack:0xff7f50 },
+  },
+  temple: {
+    label: 'Temple',
+    speckle: 'glyph',
+    floor:  { even:0x4a3a24, odd:0x3f301d, light:[0x6b5636,0x5c4a2e], dark:[0x2e2314,0x261c10] },
+    wall:   { base:0x8a7248, light:0xc9a862, dark:0x4a3c22, inner:0x7a6440, stroke:0x2a2110, seam:0xe0c060 },
+    crate:  { body:0x6b4a2a, bevelLight:0x9a7038, bevelDark:0x3e2916, inner:0x6b4a2a, stroke:0x241a0e, crack:0xe0c060 },
+  },
+  island: {
+    label: 'Island',
+    speckle: 'shell',
+    floor:  { even:0xe8d4a0, odd:0xdcc68e, light:[0xf5e8c0,0xece0ae], dark:[0xc9ae74,0xbca066] },
+    wall:   { base:0xd9b877, light:0xf0dca0, dark:0x8a6f3e, inner:0xc4a468, stroke:0x5c4826, seam:0x4fc9e8 },
+    crate:  { body:0x7a5a3a, bevelLight:0xa3805a, bevelDark:0x4a331d, inner:0x7a5a3a, stroke:0x2e2010, crack:0x2e2010 },
+  },
 };
 // Insertion order above also drives the lobby's theme dropdown option order.
 const THEME_ORDER = Object.keys(THEMES);
