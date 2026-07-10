@@ -42,7 +42,9 @@ personalities, and reconnect-aware networking.
 * **Resilient networking:** Dropped clients get a grace window to automatically reconnect into
   their original player slot using a persistent per-browser token, with a banner shown while
   reconnecting. A live ping readout for each connected player is shown in the HUD.
-* **Sound effects:** Built entirely with the Web Audio API — no external audio assets required.
+* **Sound effects & music:** Built entirely with the Web Audio API — no external audio assets
+  required. A short, subtle ambient background loop (soft pad chords plus a sparse arpeggio)
+  plays during matches under the sound effects, and follows the sound on/off option.
 * **Move export (solo mode):** Solo games can be exported as a JSON recording of every move,
   bomb, curse, and death event, timestamped against the match clock.
 
@@ -96,7 +98,7 @@ The game is split into a small set of static files that all need to stay togethe
 | `index.html` | Page markup, links to `styles.css`, loads the CDN libraries and the JS modules below in order |
 | `styles.css` | All styling for the lobby, HUD, and touch controls |
 | `config.js` | Shared config, map scenarios, seed helpers, speed/FPS settings, power-up drop weights, bot personality definitions |
-| `audio.js` | Web Audio API sound effects (synthesized, no audio files) |
+| `audio.js` | Web Audio API sound effects and background music (synthesized, no audio files) |
 | `visuals.js` | Power-up, teleporter, bomb, and explosion graphics |
 | `input.js` | Touch control state and keyboard input helpers |
 | `board.js` | Board/tile drawing, fog of war, shrinking arena, HUD |

@@ -5,6 +5,7 @@ setupTouchControls();
 // the choice survives a page reload without needing any server/account.
 const SETTINGS_KEY = 'mazeBlasterSettings';
 let SOUND_ENABLED = true;
+let MUSIC_ENABLED = true;
 const FPS_CAP_OPTIONS = [30, 20, 15, 10];
 let SELECTED_FPS_CAP = 30;
 // Empty string means "no custom name" — playerDisplayName() falls back to the
@@ -31,6 +32,11 @@ function loadSettings(){
       const sndSel = document.getElementById('sound-toggle');
       if (sndSel) sndSel.value = SOUND_ENABLED ? 'on' : 'off';
     }
+    if (saved && typeof saved.musicEnabled === 'boolean'){
+      MUSIC_ENABLED = saved.musicEnabled;
+      const musSel = document.getElementById('music-toggle');
+      if (musSel) musSel.value = MUSIC_ENABLED ? 'on' : 'off';
+    }
     if (saved && FPS_CAP_OPTIONS.includes(saved.fpsCap)){
       SELECTED_FPS_CAP = saved.fpsCap;
       const fpsSel = document.getElementById('fps-cap');
@@ -50,11 +56,12 @@ function loadSettings(){
     // Corrupted JSON or storage blocked (private browsing, etc) — just
     // fall back to the defaults instead of breaking the lobby.
   }
-  SFX.setEnabled(SOUND_ENABLED);
+  SFX.setSfxEnabled(SOUND_ENABLED);
+  SFX.setMusicEnabled(MUSIC_ENABLED);
 }
 function saveSettings(){
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED, fpsCap: SELECTED_FPS_CAP, playerName: PLAYER_NAME, theme: SELECTED_THEME }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapSize: SELECTED_MAP_SIZE, gameSpeed: SELECTED_SPEED, soundEnabled: SOUND_ENABLED, musicEnabled: MUSIC_ENABLED, fpsCap: SELECTED_FPS_CAP, playerName: PLAYER_NAME, theme: SELECTED_THEME }));
   } catch (e) {
     // Storage full or unavailable — the choice just won't persist this time.
   }
@@ -79,7 +86,12 @@ document.getElementById('game-speed').onchange = e => {
 };
 document.getElementById('sound-toggle').onchange = e => {
   SOUND_ENABLED = e.target.value === 'on';
-  SFX.setEnabled(SOUND_ENABLED);
+  SFX.setSfxEnabled(SOUND_ENABLED);
+  saveSettings();
+};
+document.getElementById('music-toggle').onchange = e => {
+  MUSIC_ENABLED = e.target.value === 'on';
+  SFX.setMusicEnabled(MUSIC_ENABLED);
   saveSettings();
 };
 document.getElementById('fps-cap').onchange = e => {
@@ -138,6 +150,7 @@ function showGameUI(){
   document.getElementById('game-wrap').classList.remove('hidden');
   document.getElementById('touch-controls').classList.remove('hidden');
   if (isTouchDevice()) document.getElementById('btn-fullscreen').classList.remove('hidden');
+  SFX.startMusic();
 }
 // Shows the seed for the match currently in progress, top-left of the game
 // screen, as plain (copyable) HTML rather than canvas text — matches the
